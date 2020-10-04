@@ -10,7 +10,7 @@
 			},
 			"problemMatcher": [
 				"$gcc"
-			],
+			]
 		},
 		{
 			"type": "shell",
@@ -22,6 +22,10 @@
 			"problemMatcher": [
 				"$gcc"
 			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
 		}
 	]
 }
