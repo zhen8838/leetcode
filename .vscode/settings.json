@@ -53,5 +53,11 @@
         "random": "cpp",
         "set": "cpp",
         "string": "cpp"
-    }
+    },
+    "python.formatting.autopep8Args": [
+        "--indent-size=4",
+        "-j=4",
+        "--max-line-length=100",
+        "--ignore=E402",
+    ],
 }
