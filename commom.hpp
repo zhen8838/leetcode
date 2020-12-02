@@ -1,9 +1,13 @@
+#include <math.h>
+
 #include <algorithm>
+#include <bitset>
+#include "icecream.hpp"
 #include <iostream>
 #include <map>
 #include <set>
+#include <stack>
 #include <vector>
-#include <math.h>
 using namespace std;
 
 template <typename K, typename V>
@@ -30,5 +34,5 @@ void pscalr(const T& t) {
 template <typename T, typename... Args>
 void pscalr(const T& t, Args... args) {
   cout << t << ", ";
-  pscalr(args...); 
+  pscalr(args...);
 }
