@@ -54,7 +54,9 @@
         "random": "cpp",
         "set": "cpp",
         "string": "cpp",
-        "stack": "cpp"
+        "stack": "cpp",
+        "bitset": "cpp",
+        "iomanip": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",
