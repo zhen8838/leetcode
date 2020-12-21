@@ -22,9 +22,10 @@ class Solution {
         track.push_back(')');
       }
       res.push_back(track);
-      // for (size_t j = 0; j < n - rightn; j++) {
-      //   track.pop_back();
-      // }
+      // remove added right brack.
+      for (size_t j = 0; j < n - rightn; j++) {
+        track.pop_back();
+      }
       return;
     }
     // 选择列表为[加左括号，加右括号]
@@ -41,12 +42,16 @@ class Solution {
           return;
         }
       }
-      IC(track, leftn, rightn);
+      // IC(track, leftn, rightn);
       backtrack(track, leftn, rightn, n);  // 继续回溯
       // 取消选择
-      if (leftn > rightn) {
-        track.pop_back();
+      // because the `leftn<=rightn` already return, so in here rightn must need --.
+      if (i == 0) {
+        leftn--;
+      } else {
+        rightn--;
       }
+      track.pop_back();
     }
   }
 };
