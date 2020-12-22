@@ -8,9 +8,11 @@
 #include <set>
 #include <stack>
 #include <vector>
+#include <climits>
 
 #include "icecream.hpp"
 using namespace std;
+#define ic IC
 
 struct ListNode {
   int val;
