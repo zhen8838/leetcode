@@ -56,7 +56,9 @@
         "string": "cpp",
         "stack": "cpp",
         "bitset": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "queue": "cpp",
+        "regex": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",
@@ -64,4 +66,5 @@
         "--max-line-length=100",
         "--ignore=E402",
     ],
+    "python.pythonPath": "/home/zqh/workspace/miniconda3/envs/tf2/bin/python",
 }
