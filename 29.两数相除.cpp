@@ -8,6 +8,13 @@
 class Solution {
  public:
   int divide(int dividend, int divisor) {
+    /* 
+      NOTE:
+      int type: 
+          -INT_MIN=INT_MIN
+          -INT_MIN-1=overflow,
+          INT_MAX+1=INT_MIN=overflow
+     */
     bool flag = true;
     if (divisor > 0) {
       divisor = -divisor;
