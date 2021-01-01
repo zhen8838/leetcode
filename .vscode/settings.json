@@ -58,7 +58,9 @@
         "bitset": "cpp",
         "iomanip": "cpp",
         "queue": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "ranges": "cpp",
+        "coroutine": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",

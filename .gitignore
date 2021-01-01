@@ -1,3 +1,4 @@
 *.exe
 *.pyc
 *.gch
+.vscode/c_cpp_properties.json
