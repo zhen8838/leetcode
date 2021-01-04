@@ -10,6 +10,7 @@
 #include <set>
 #include <stack>
 #include <vector>
+#include <string>
 
 #include "icecream.hpp"
 using namespace std;

@@ -11,31 +11,38 @@ class Solution {
 
  public:
   int maxSumDivThree(vector<int>& nums) {
-    int sum = 0;
-    dfs(nums, sum, 0, nums.size());
-    return maxsum;
-    	vector<int> ans(3, 0);//ans[0],ans[1],ans[2]分别保存遍历过的元素的和中%3==0，%3==1，%3==2的最大值
-	vector<int>temp(3, 0);
-
-	// for (auto num : nums) { //遍历nums
-	// 	for (auto a : ans) {  //将ans中每个元素与num求和
-	// 	    if ((num + a) % 3 == 0) temp[0] = max(num + a, temp[0]); //如果当前和 %3==0  且大于之前的temp[0]则更新temp[0]
-	// 	    else if ((num + a) % 3 == 1)temp[1] = max(num + a, temp[1]);//同上
-	// 	    else if ((num + a) % 3 == 2)temp[2] = max(num + a, temp[2]);//同上
-
-	// 	}
-	// 	ans = temp;//将修正过的temp赋给ans
-	// }
-	// return ans[0];//完成遍历返回a[0]即可
-
-
+    // ans[0],ans[1],ans[2]分别保存遍历过的元素的和中%3==0，%3==1，%3==2的最大值
+    vector<int> ans(3, 0), tmp(3, 0);
+    ans[1] = INT_MIN;
+    ans[2] = INT_MIN;
+    for (auto&& num : nums) {
+      if (num % 3 == 0) {
+        // 表示当前值,当前值有三种状态,如果当前值能被三整除,那么每个状态加上当前值都是原来的状态
+        ans[0] += num;
+        ans[1] += num;
+        ans[2] += num;
+      } else if (num % 3 == 1) {
+        // 如果当前值能除三余1,那么 状态0+num,
+        // 和状态1我们选大的那个,其他两个类似
+        tmp[0] = max(ans[2] + num, ans[0]);
+        tmp[1] = max(ans[0] + num, ans[1]);
+        tmp[2] = max(ans[1] + num, ans[2]);
+        ans = tmp;
+      } else if (num % 3 == 2) {
+        tmp[0] = max(ans[1] + num, ans[0]);
+        tmp[1] = max(ans[2] + num, ans[1]);
+        tmp[2] = max(ans[0] + num, ans[2]);
+        ans = tmp;
+      }
+    }
+    return ans[0];
   }
 
   void dfs(vector<int>& nums, int sum, int pos, int len) {
     if (sum % 3 == 0) {
       maxsum = max(maxsum, sum);
     }
-    ic(pos, sum);
+    // ic(pos, sum);
     if (pos == len) {
       return;
     }
