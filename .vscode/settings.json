@@ -61,7 +61,9 @@
         "regex": "cpp",
         "ranges": "cpp",
         "coroutine": "cpp",
-        "climits": "cpp"
+        "climits": "cpp",
+        "concepts": "cpp",
+        "variant": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",

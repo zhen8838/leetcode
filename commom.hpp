@@ -9,8 +9,8 @@
 #include <regex>
 #include <set>
 #include <stack>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "icecream.hpp"
 using namespace std;
