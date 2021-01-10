@@ -14,32 +14,33 @@ class Solution {
     for (auto&& c : S) {
       dict[c]++;
     }
-    vector<pair<char, int>> vmap;
-    for (auto&& item : dict) {
-      vmap.push_back(item);
-    }
-
+    vector<pair<char, int>> vmap(dict.begin(), dict.end());
     sort(vmap.begin(), vmap.end(),
          [](const pair<char, int>& x, const pair<char, int>& y) -> int {
-           return x.second > y.second;
+           return x.second < y.second;
          });
-    if (vmap[0].second > ((S.size() + 1) / 2)) {
+
+    if (vmap.back().second > ((S.size() + 1) / 2)) {
       return "";
     }
-    string res;
-    res.push_back(vmap[0].first);
-    vmap[0].second--;
-    while (res.size() < S.size()) {
-      for (size_t i = 0; i < vmap.size(); i++) {
-        if (vmap[i].second == 0) {
-          continue;
-        }
-        if (res.back() == vmap[i].first) {
-          continue;
-        }
-        res.push_back(vmap[i].first);
-        vmap[i].second--;
+
+    string res(S.size(), ' ');
+    int even = 1, odd = 0;
+    while (odd < res.size()) {
+      if (vmap.back().second == 0) {
+        vmap.pop_back();
       }
+      res[odd] = vmap.back().first;
+      vmap.back().second--;
+      odd += 2;
+    }
+    while (even < res.size()) {
+      if (vmap.back().second == 0) {
+        vmap.pop_back();
+      }
+      res[even] = vmap.back().first;
+      vmap.back().second--;
+      even += 2;
     }
 
     return res;
