@@ -16,6 +16,12 @@
 using namespace std;
 #define ic IC
 
+template <typename T>
+using Mat = vector<vector<T>>;
+
+template <typename T>
+using Vec = vector<T>;
+
 struct ListNode {
   int val;
   ListNode* next;
