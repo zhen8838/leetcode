@@ -18,12 +18,20 @@
 class Solution {
  public:
   ListNode* swapPairs(ListNode* head) {
-    ListNode *prehead = new ListNode(), *node = nullptr;
+    ListNode *prehead = new ListNode(), *node = nullptr, *last = nullptr;
     prehead->next = head;
-    node = prehead;
+    last = prehead;
+    node = last->next;
     while (node and node->next) {
-
+      last->next = node->next;
+      node->next = last->next->next;
+      last->next->next = node;
+      last = node;
+      node = node->next;
     }
+    last = prehead->next;
+    delete prehead;
+    return last;
   }
 };
 // @lc code=end
