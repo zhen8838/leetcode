@@ -35,7 +35,7 @@ class Solution {
       }
       if (i < nums.size() - 1 and
           (sum + nums[i] + int(3 - track.size()) * nums[i + 1]) > target) {
-        // 如果当前这个数加上去之后,
+        // 如果当前这个数加上去之后
         return;
       }
       if (i < nums.size() - 1 and
