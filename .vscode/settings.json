@@ -63,7 +63,8 @@
         "coroutine": "cpp",
         "climits": "cpp",
         "concepts": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "unordered_set": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",
