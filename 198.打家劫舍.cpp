@@ -11,10 +11,29 @@ class Solution {
 
  public:
   int rob(vector<int>& nums) {
-    vector<int> memo(nums.size(), -1);
-    dfs(memo, nums, 0, 0, nums.size());
-    return maxans;
+    if (nums.empty()) {
+      return 0;
+    }
+
+    /* 每天的状态是偷和不偷 */
+    int a = nums[0];
+    int b = 0;
+    int lasta, lastb;
+    for (size_t i = 1; i < nums.size(); i++) {
+      lasta = a;
+      lastb = b;
+      // 偷，那么昨天不偷的最大值加上今天值。
+      a = lastb + nums[i];
+      // 不偷，那么昨天偷的最大值与昨天不偷最大值取较大的。
+      b = max(lasta, lastb);
+    }
+    return max(a, b);
   }
+  // int rob(vector<int>& nums) {
+  //   vector<int> memo(nums.size(), -1);
+  //   dfs(memo, nums, 0, 0, nums.size());
+  //   return maxans;
+  // }
   void dfs(vector<int>& memo, vector<int>& nums, int ans, int first, int len) {
     // ic(first, ans);
     if (first >= len) {
@@ -35,10 +54,7 @@ class Solution {
 // @lc code=end
 
 int main(int argc, char const* argv[]) {
-  vector<int> nums{104, 209, 137, 52,  158, 67,  213, 86,  141, 110,
-                   151, 127, 238, 147, 169, 138, 240, 185, 246, 225,
-                   147, 203, 83,  83,  131, 227, 54,  78,  165, 180,
-                   214, 151, 111, 161, 233, 147, 124, 143};
+  vector<int> nums{2, 7, 9, 3, 1};
   Solution s;
   ic(s.rob(nums));
   return 0;
