@@ -8,28 +8,53 @@
 class Solution {
  public:
   int getSum(int a, int b) {
-    uint carry;
-    while (b) {
-      carry = (a & b); 
-      carry <<= 1;  // 两个都是1,那么进一位,同时用uint保证不溢出
-      a = (a ^ b);
-      b = carry;
+    int c = 0;
+    bool carry = false;
+    uint mask = 1;
+    for (int i = 1; i <= 32; i++) {
+      if ((a & mask) and (b & mask)) {  // 两个1
+        if (carry) {                    // 有进位且1+1又进位
+          c |= mask;
+        } else {  // 没进位,但 1+1得0 进位；
+          carry = true;
+        }
+      } else if ((a & mask) or (b & mask)) {  // 一个0一个1
+        if (carry) {                          // 有进位+1得0 ，继续进位
+          carry = true;
+        } else {
+          c |= mask;
+        }
+      } else {        // 两个0
+        if (carry) {  // 有进位，加1，
+          c |= mask;
+          carry = false;
+        }
+      }
+      mask <<= 1;
     }
+    return c;
+  }
+  int getSum2(int a, int b) {
+    // a 与 b为0，那么就是全部错位的，异或能得到正确结果
+    uint c = 0;
+    while (b != 0) {
+      c = (uint)(a & b) << 1;
+      a ^= b;
+      b = c;
+    }
+
+    // return c;
     return a;
   }
 };
 // @lc code=end
 
 int main(int argc, char const* argv[]) {
-  int a = -1, b = 3;
-
-  ic(bitset<32>(a), bitset<32>(b), bitset<32>(a + b), bitset<32>(a | b));
-  int c = 0b11111111111111111111111111111111;
-  ic(c, bitset<32>(1), bitset<32>(~(-1) + 1));
-  ic(INT_MIN, bitset<32>(0x100000000), bitset<32>(INT_MIN),
-     bitset<32>(~INT_MIN + 1), bitset<32>(INT_MIN + 5), INT_MIN + 5);
-  a = 0x100000000;
-  b = INT_MIN;
-  ic(a == b);
+  int a = -12, b = -8;
+  Solution s;
+  ic(s.getSum(a, b));
+  ic(s.getSum2(a, b));
+  ic(bitset<32>(-20));
+  ic(bitset<4>(3 ^ 3), bitset<4>((3 & 3) << 1));
   return 0;
 }
