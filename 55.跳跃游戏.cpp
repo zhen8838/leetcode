@@ -3,48 +3,18 @@
  *
  * [55] 跳跃游戏
  */
-#include "commom.hpp"
 // @lc code=start
 class Solution {
  public:
-  bool canJump1(vector<int>& nums) {
-    int i = 0, big_idx, steps;
-    while (i < nums.size() - 1) {
-      big_idx = 0;
-      steps = 0;
-      for (size_t j = 1; j < nums[i] + 1; j++) {
-        // ic(i, i + j,nums.size());
-        if ((i + j) >= (nums.size() - 1)) {
-          return true;
-        }
-
-        if (((i + j) + nums[i + j]) >= steps) {
-          steps = ((i + j) + nums[i + j]);
-          big_idx = j;
-        }
-      }
-      // ic(i, i + big_idx);
-      if (nums[i + big_idx] == 0) {
-        return false;
-      }
-
-      i += big_idx;
-    }
-    return true;
-  }
   bool canJump(vector<int>& nums) {
-    // dp , each state is index i highest range.
-    int h = 0;
-    for (int i = 0; i < nums.size(); i++) {
-      if (i > h) {
-        return false;
-      }
-      h = max(i + nums[i], h);
-      if (h >= nums.size() - 1) {
-        return true;
-      }
+    int idx = 1, i = 0;
+    for (i = 0; i < idx and i < nums.size(); i++) {
+      idx = max(idx, i + nums[i] + 1);
     }
-    return true;
+    if (idx >= nums.size()) {
+      return true;
+    }
+    return false;
   }
 };
 // @lc code=end
