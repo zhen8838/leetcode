@@ -8,27 +8,20 @@
 class Solution {
  public:
   int maxProfit(vector<int>& prices) {
-    int ans = 0, n = prices.size();
-    if (n == 0) {
-      return 0;
-    }
+    /*
+     ! 每天的收益情况有两种:
+     * 当天买入了股票，那么我们就是要找负的最大值。
 
-    vector<vector<int>> dp(n, vector<int>(2, 0));
-    /* 0是今天不持股状态下的金额数,
-          0.0 之前持有,今天卖出
-          0.1 之前也不持有,保持不变
-       1是今天持股状态下的金额数
-          1.0 之前不持有,今天买入
-          1.1 之前持有,保持不变
-       */
-    dp[0][0] = 0;           //第一天不持有,总金额为0
-    dp[0][1] = -prices[0];  //第一天持有,总金额为负的第一天
-    for (size_t i = 1; i < n; i++) {
-      dp[i][0] = max(dp[i - 1][1] + prices[i], dp[i - 1][0]);
-      // 因为只能卖出之后才能买入,那么今天买入的情况就是-prices[i]
-      dp[i][1] = max(-prices[i], dp[i - 1][1]);
+     * 当天卖出了股票，也就是收益，那么我们将历史最大收益和今天卖出的收益进行比较。
+
+    */
+
+    int buy = -prices[0], sell = 0, ans = 0;
+    for (int i = 1; i < prices.size(); i++) {
+      tie(buy, sell) =
+          make_tuple(max(buy, -prices[i]), max(sell, buy + prices[i]));
     }
-    return dp[n - 1][0];
+    return sell;
   }
 };
 // @lc code=end
