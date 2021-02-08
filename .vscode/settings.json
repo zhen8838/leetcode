@@ -67,7 +67,8 @@
         "unordered_set": "cpp",
         "mutex": "cpp",
         "thread": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "compare": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",
