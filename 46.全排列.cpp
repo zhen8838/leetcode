@@ -3,7 +3,6 @@
  *
  * [46] 全排列
  */
-#include "commom.hpp"
 // @lc code=start
 class Solution {
  private:
@@ -11,19 +10,22 @@ class Solution {
 
  public:
   vector<vector<int>> permute(vector<int>& nums) {
-    backtrack(nums, 0, nums.size());
+    vector<int> track;
+    dfs(nums, track, 0, nums.size());
     return res;
   }
 
-  void backtrack(vector<int>& nums, int first, int len) {
-    if (first == len) {
-      res.push_back(nums);
+  void dfs(vector<int>& nums, vector<int>& track, int pos, int n) {
+    if (pos == n) {
+      res.push_back(track);
       return;
     }
-    for (size_t i = first; i < len; i++) {
-      swap(nums[i], nums[first]);
-      backtrack(nums, first + 1, len);
-      swap(nums[i], nums[first]);
+    for (int i = 0; i < nums.size(); i++) {
+      track.push_back(nums[i]);
+      nums.erase(nums.begin() + i);
+      dfs(nums, track, pos + 1, n);
+      nums.insert(nums.begin() + i, track.back());
+      track.pop_back();
     }
   }
 };

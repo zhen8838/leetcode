@@ -16,9 +16,7 @@ class Solution {
  public:
   vector<string> letterCombinations(string digits) {
     string track = "";
-    if (digits.empty()) {
-      return res;
-    }
+    if (digits.empty()) { return res; }
     backtrack(digits, track, 0, digits.size());
     return res;
   }
@@ -41,24 +39,6 @@ class Solution {
       track.pop_back();
     }
   }
-
-  // void backtrack(string& output, int first, int len) {
-  //   // 结束选择
-  //   if (first == len) {
-  //     res.push_back(output);
-  //     return;
-  //   }
-
-  //   // 从选择列表中选择
-  //   for (size_t i = first; i < len; i++) {
-  //     // 做一个选择
-  //     IC(output[i], output[first]);
-  //     swap(output[i], output[first]);
-  //     backtrack(output, first + 1, len);
-  //     // 取消当前选择
-  //     swap(output[first], output[i]);
-  //   }
-  // }
 };
 // @lc code=end
 
