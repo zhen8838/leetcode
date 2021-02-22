@@ -9,35 +9,35 @@
 // @lc code=start
 class Solution {
  public:
-  void moveZeroes(vector<int> &nums) {
-    // NOTE 此方法较慢
-    // int zero_cnt = 0, len = nums.size();
-    // for (size_t i = 0; i < (len - zero_cnt); i++) {
-    //   while (nums[i] == 0 && zero_cnt < len) {
-    //     nums.erase(nums.begin() + i);
-    //     nums.push_back(0);
-    //     zero_cnt++;
+  void moveZeroes(vector<int>& nums) {
+    /* 冒泡 */
+    // bool swaped = true;
+    // int n = nums.size(), last = -1, right = n - 1;
+    // while (swaped) {
+    //   swaped = false;
+    //   for (int i = 0; i < right; i++) {
+    //     if (nums[i] == 0) {
+    //       swap(nums[i], nums[i + 1]);
+    //       swaped = true;
+    //       last = i;
+    //     }
     //   }
+    //   right = last;
     // }
-    // 双指针一次遍历
+    /* 双指针 */
     int j = 0;
-    // 用j标记零元素，用非0元素和0元素互换保证顺序
-    for (size_t i = 0; i < nums.size(); i++) {
-      if (nums[i] != 0) {
-        swap(nums[i], nums[j++]);
-      }
+    for (int i = 0; i < nums.size(); i++) {
+      if (nums[i] != 0) swap(nums[i], nums[j++]);
     }
   }
 };
 // @lc code=end
 
-int main(int argc, char const *argv[]) {
+int main(int argc, char const* argv[]) {
   vector<int> input = {0};
   auto s = Solution();
   s.moveZeroes(input);
-  for (auto &&i : input) {
-    cout << i << ", ";
-  }
+  for (auto&& i : input) { cout << i << ", "; }
   cout << endl;
   return 0;
 }
