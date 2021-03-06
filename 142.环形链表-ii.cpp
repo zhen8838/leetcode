@@ -17,23 +17,18 @@ class Solution {
  public:
   ListNode* detectCycle(ListNode* head) {
     ListNode *slow = head, *fast = head;
-    /* 重点在于一定要同时出发,并且slow会在没有走完一圈的情况下碰到fast,这个时候圆环剩下的长度正好就是进入节点的长度 */
-    while (fast) {
+    while (fast and fast->next) {
       slow = slow->next;
-      if (not fast->next) {
-        return nullptr;
-      }
       fast = fast->next->next;
-      if (fast == slow) {
-        auto node = head;
-        while (node != slow) {
-          node = node->next;
-          slow = slow->next;
-        }
-        return node;
-      }
+      if (slow == fast) { break; }
     }
-    return nullptr;
+    if (not fast or not fast->next) { return nullptr; }
+    fast = head;
+    while (fast != slow) {
+      fast = fast->next;
+      slow = slow->next;
+    }
+    return fast;
   }
 };
 // @lc code=end

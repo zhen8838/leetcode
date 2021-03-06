@@ -3,103 +3,68 @@
  *
  * [146] LRU 缓存机制
  */
-#include <unordered_map>
 
-#include "commom.hpp"
-// using namespace std;
 // @lc code=start
-struct DLinkedList {
-  int key;
-  int value;
-  DLinkedList* last;
-  DLinkedList* next;
-  DLinkedList() : key(0), value(0), last(nullptr), next(nullptr) {}
-  DLinkedList(int _key, int _val)
-      : key(_key), value(_val), last(nullptr), next(nullptr) {}
-};
-
 class LRUCache {
  private:
+  struct ListNode {
+    int k;
+    int v;
+    ListNode *next, *last;
+    ListNode(int _k, int _v) : k(_k), v(_v){};
+    ListNode() : v(0){};
+  };
+  ListNode *head, *tail;
   int size;
-  int capacity;
-  DLinkedList* head;
-  DLinkedList* tail;
-  unordered_map<int, DLinkedList*> cache;
-
-  void unlink(DLinkedList* node) {
-    // 处理上下两个节点
-    node->last->next = node->next;
-    node->next->last = node->last;
-    // 清理自身
-    node->last = nullptr;
-    node->next = nullptr;
-  }
-
-  void add2head(DLinkedList* node) {
-    head->next->last = node;
-    node->next = head->next;
-    head->next = node;
-    node->last = head;
-  }
-
-  void move2head(DLinkedList* node) {
-    unlink(node);
-    add2head(node);
-  }
-
-  DLinkedList* remove2tail(void) {
-    DLinkedList* node = tail->last;
-    unlink(node);
-    return node;
-  }
+  unordered_map<int, ListNode*> umap;
 
  public:
   LRUCache(int capacity)
-      : size(0),
-        capacity(capacity),
-        head(new DLinkedList()),
-        tail(new DLinkedList()) {
+      : size(capacity), head(new ListNode()), tail(new ListNode()) {
     head->next = tail;
+    head->last = tail;
     tail->last = head;
-  }
-  ~LRUCache() {
-    auto node = head;
-    for (auto&& item : cache) {
-      delete item.second;
-    }
-
-    delete head;
-    delete tail;
+    tail->next = head;
   }
 
   int get(int key) {
-    if (!cache.count(key)) {
-      return -1;
+    if (umap.count(key)) {
+      movetohead(umap[key]);
+      return umap[key]->v;
     }
-    DLinkedList* node = cache[key];
-    move2head(node);  // 将最近被使用的页面放到最前面
-    return node->value;
+    return -1;
   }
 
   void put(int key, int value) {
-    if (cache.count(key)) {
-      // 如果有值就更新数据,并且放到最前面
-      DLinkedList* node = cache[key];
-      node->value = value;
-      move2head(node);
+    if (umap.count(key)) {
+      movetohead(umap[key]);
+      umap[key]->v = value;
     } else {
-      // 没有值就加节点,并且考虑是否需要删除数据
-      if (size == capacity) {
-        DLinkedList* unusenode = remove2tail();
-        cache.erase(unusenode->key);
-        delete unusenode;
-        size--;
+      if (umap.size() == size) {
+        umap.erase(tail->last->k);
+        removenode(tail->last);
       }
-      DLinkedList* node = new DLinkedList(key, value);
-      cache[key] = node;
-      add2head(node);
-      size++;
+      ListNode* node = new ListNode(key, value);
+      umap[key] = node;
+      inserttohead(node);
     }
+  }
+  void removenode(ListNode* node) {
+    node->last->next = node->next;
+    node->next->last = node->last;
+    node->next = nullptr;
+    node->last = nullptr;
+  }
+
+  void inserttohead(ListNode* node) {
+    node->next = head->next;
+    node->last = head;
+    node->next->last = node;
+    head->next = node;
+  }
+  void movetohead(ListNode* node) {
+    removenode(node);
+    inserttohead(node);
   }
 };
 
@@ -110,18 +75,3 @@ class LRUCache {
  * obj->put(key,value);
  */
 // @lc code=end
-
-int main(int argc, char const* argv[]) {
-  LRUCache cache(2);
-  cache.put(2, 1);
-  cache.put(1, 1);
-  cache.put(2, 3);
-  cache.put(4, 1);
-  cache.get(1);
-  cache.get(2);
-  // cache.put(2, 1);
-  // cache.put(3, 1);
-  // LRUCache::~LRUCache();
-
-  return 0;
-}
