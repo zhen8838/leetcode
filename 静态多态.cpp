@@ -138,6 +138,13 @@ void 测试大小端() {
   ic(bitset<16>(t.b));
 }
 
+void 测试异或() {
+  vector<int> nums{1, 0, 0, 1, 0};
+  int x = 0;
+  for (auto&& i : nums) { x ^= i; }
+  ic(x);
+}
+
 int main(int argc, char const* argv[]) {
   // test_static_polymorphism();
   // test_dynamic();
@@ -147,6 +154,7 @@ int main(int argc, char const* argv[]) {
   // test_sizeof();
   // test_class_size();
   // test_struct_size();
-  测试大小端();
+  // 测试大小端();
+  测试异或();
   return 0;
 }

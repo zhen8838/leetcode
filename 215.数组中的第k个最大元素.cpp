@@ -5,19 +5,58 @@
  */
 #include "commom.hpp"
 // @lc code=start
+class MinHeap {
+ private:
+  vector<int> arr;
+  int capa;
+  int size;
+
+ public:
+  MinHeap(int n) : capa(n), size(0), arr(n + 2, 0) {}
+  void push(int v) {
+    size++;
+    arr[size] = v;
+    int child = size;
+    int parent = child / 2;
+    while (arr[child] < arr[parent] and child > 1) {
+      swap(arr[parent], arr[child]);
+      child = parent;
+      parent = child / 2;
+    }
+    if (size > capa) { pop(); }
+  }
+  int pop() {
+    int tmp = arr[1];
+    arr[1] = arr[size];
+    size--;
+    int parent = 1;
+    // 保证有子树
+    while (parent < size and parent <= size / 2) {
+      int left = parent * 2, right = left + 1;
+      if (arr[parent] > arr[left] or arr[parent] > arr[right]) {
+        if (arr[left] < arr[right]) {
+          swap(arr[left], arr[parent]);
+          parent = left;
+        } else {
+          swap(arr[right], arr[parent]);
+          parent = right;
+        }
+      } else {
+        break;
+      }
+    }
+    return tmp;
+  }
+
+  int top() { return arr[1]; }
+};
+
 class Solution {
  public:
   int findKthLargest(vector<int>& nums, int k) {
-    sort(nums.begin(), nums.end(), greater<int>());
-    // IC(nums);
-    // set<int> cnt;
-    // int i = 0;
-    // while (cnt.size() < k) {
-    //   cnt.insert(nums[i]);
-    //   i++;
-    // }
-
-    return nums[k - 1];
+    auto maxheap = MinHeap(k);
+    for (int i = 0; i < nums.size(); i++) { maxheap.push(nums[i]); }
+    return maxheap.top();
   }
 };
 // @lc code=end
