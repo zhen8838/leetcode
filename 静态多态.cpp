@@ -155,6 +155,6 @@ int main(int argc, char const* argv[]) {
   // test_class_size();
   // test_struct_size();
   // 测试大小端();
-  测试异或();
+  // 测试异或();
   return 0;
 }
