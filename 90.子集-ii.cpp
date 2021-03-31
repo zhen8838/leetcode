@@ -13,20 +13,16 @@ class Solution {
   vector<vector<int>> subsetsWithDup(vector<int>& nums) {
     sort(nums.begin(), nums.end());
     vector<int> track;
-    dfs(nums, track, 0, nums.size());
+    dfs(nums, track, 0);
     return ans;
   }
-  void dfs(vector<int>& nums, vector<int>& track, int pos, int n) {
+  void dfs(vector<int>& nums, vector<int>& track, int p) {
     ans.push_back(track);
-    if (pos == n) {
-      return;
-    }
-    for (size_t i = pos; i < n; i++) {
-      if (i > pos and nums[i - 1] == nums[i]) {
-        continue;
-      }
+    if (p == nums.size()) { return; }
+    for (int i = p; i < nums.size(); i++) {
+      if (i > p and nums[i - 1] == nums[i]) { continue; }
       track.push_back(nums[i]);
-      dfs(nums, track, i + 1, n);
+      dfs(nums, track, i + 1); 
       track.pop_back();
     }
   }
