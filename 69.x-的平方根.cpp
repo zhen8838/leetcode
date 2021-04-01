@@ -8,34 +8,28 @@
 class Solution {
  public:
   int mySqrt(int x) {
-    if (x == 1) {
-      return 1;
-    }
-
-    int left = 0, right = x / 2 + 1;
-    long t, mid;
-    while (left < right) {
-      mid = (left + right) / 2;
-      // ic(mid, left, right);
-      t = mid * mid;
+    if (x == 1) { return 1; }
+    int l = 0, r = x, mid;
+    long long t;
+    int ans;
+    while (l <= r) {
+      mid = (l + r) / 2;
+      t = (long long)mid * mid;
       if (t == x) {
-        // right = mid;
         return mid;
       } else if (t < x) {
-        left = mid + 1;
+        ans = mid;
+        l = mid + 1;
       } else if (t > x) {
-        right = mid;
+        r = mid - 1;
       }
     }
-    if (t > x) {
-      return mid - 1;
-    }
-    return mid;
+    return ans;
   }
 };
 // @lc code=end
 int main(int argc, char const* argv[]) {
   Solution s;
-  ic(s.mySqrt(4));
+  ic(s.mySqrt(3));
   return 0;
 }
