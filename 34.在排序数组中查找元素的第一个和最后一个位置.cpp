@@ -8,35 +8,29 @@
 class Solution {
  public:
   vector<int> searchRange(vector<int>& nums, int target) {
-    vector<int> res(2, -1);
-    if (nums.empty()) {
-      return res;
+    /* 二分两次，
+      比如[5,7,7,8,8,10], target = 8，
+      */
+    if (nums.empty()) return {-1, -1};
+    // 我们首先找到大于等于8的左端点（模板1）
+    int l = 0, r = nums.size() - 1, mid;
+    while (l < r) {
+      mid = l + r >> 1;
+      if (nums[mid] >= target) r = mid;
+      else
+        l = mid + 1;
     }
-    size_t left = 0, right = nums.size();
-    while (left < right) {
-      size_t mid = (left + right) / 2;
-      // ic(left, mid, right, nums[mid]);
-      if (nums[mid] == target) {
-        right = mid;
-      } else if (nums[mid] < target) {
-        left = mid + 1;
-      } else if (nums[mid] > target) {
-        // right has one more element
-        right = mid;
-      }
+    if (nums[l] != target) return {-1, -1};
+    // 然后在新的区域内找到小于等于8的右端点（模板二）
+    int start = l;
+    r = nums.size() - 1;
+    while (l < r) {
+      mid = l + r + 1 >> 1;
+      if (nums[mid] <= target) l = mid;
+      else
+        r = mid - 1;
     }
-    if (left == nums.size()) {
-      return res;
-    }
-    if (nums[left] == target) {
-      res[0] = left;
-      while (left < nums.size() and nums[left] == target) {
-        left++;
-      }
-      res[1] = left - 1;
-    }
-
-    return res;
+    return {start, l};
   }
 };
 // @lc code=end

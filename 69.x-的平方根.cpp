@@ -8,23 +8,21 @@
 class Solution {
  public:
   int mySqrt(int x) {
-    if (x == 1) { return 1; }
+    /* 首先我们需要找到的根号x的向下取整，
+      那么也就是说 [0,m]都满足 m^2 < x
+      那么也就是说 [m,x]都满足 m^2 > x
+      那就是我们要找的是左边部分的右边界，那么用模板二
+     */
     int l = 0, r = x, mid;
-    long long t;
-    int ans;
-    while (l <= r) {
-      mid = (l + r) / 2;
-      t = (long long)mid * mid;
-      if (t == x) {
-        return mid;
-      } else if (t < x) {
-        ans = mid;
-        l = mid + 1;
-      } else if (t > x) {
+    while (l < r) {
+      mid = l + (long)r + 1 >> 1;
+      if (mid <= x / mid) {
+        l = mid;
+      } else {
         r = mid - 1;
       }
     }
-    return ans;
+    return l;
   }
 };
 // @lc code=end
