@@ -8,15 +8,17 @@
 class Solution {
  public:
   int findPeakElement(vector<int>& nums) {
-    nums.push_back(INT_MIN);
-    nums.insert(nums.begin(), INT_MIN);
-    for (size_t i = 1; i < nums.size() - 1; i++) {
-      if (nums[i - 1] < nums[i] and nums[i] > nums[i + 1]) {
-        return i - 1;
-      }
+    int n = nums.size(), l = 0, r = n - 1, mid;
+    while (l < r) {
+      mid = (l + r + 1) >> 1;
+      if ((mid > 0 and nums[mid] > nums[mid - 1]) or
+          (mid == 0 and nums[mid] > nums[mid + 1]))
+        l = mid;
+      else
+        r = mid - 1;
     }
-    return 0;
-  }
+    return l;
+  };
 };
 // @lc code=end
 

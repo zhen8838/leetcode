@@ -8,29 +8,22 @@
 class Solution {
  public:
   int search(vector<int>& nums, int target) {
-    int l = 0, r = nums.size() - 1, mid;
-    while (l <= r) {
-      mid = (l + r) >> 1;
-      if (target == nums[mid]) {
-        return mid;
-        // 先判断当前mid的值在逆序的左边还是右边
-      } else if (nums[l] <= nums[mid]) {
-        if (target < nums[mid] and target >= nums[l]) {
-          r = mid;
-        } else {
-          l = mid + 1;
-        }
-      } else if (nums[l] > nums[mid]) {
-        if (target > nums[mid] and target <= nums[r]) {
-          l = mid + 1;
-        } else {
-          r = mid;
-        }
-      } else if (l == r) {
-        break;
-      }
+    int n = nums.size(), l = 0, r = n - 1, mid;
+    while (l < r) {
+      mid = l + r >> 1;
+      if (nums[mid] <= nums[r]) r = mid;
+      else l = mid + 1;
     }
-    return -1;
+
+    if (target <= nums[n - 1]) r = n - 1;
+    else r = l - 1, l = 0;
+
+    while (l < r) {
+      mid = l + r >> 1;
+      if (nums[mid] >= target) r = mid;
+      else l = mid + 1;
+    }
+    return nums[l] == target ? l : -1;
   }
 };
 // @lc code=end

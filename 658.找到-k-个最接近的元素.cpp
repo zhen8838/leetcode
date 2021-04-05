@@ -9,18 +9,18 @@
 class Solution {
  public:
   vector<int> findClosestElements(vector<int>& arr, int k, int x) {
-    // 先二分找到分界点然后再双指针,找右端点用模板2
+    // 找到小于等于x的上界，用模板二
     int l = 0, r = arr.size() - 1, mid;
     while (l < r) {
       mid = (l + r + 1) >> 1;
       if (arr[mid] <= x) l = mid;
-      else
-        r = mid - 1;
+      else r = mid - 1;
     }
     // 找到分界点之后要判断一下左边还是右边
     if ((l < arr.size() - 1) and (abs(arr[l] - x) > abs(arr[l + 1] - x))) {
       l = r = (l + 1);
     }
+    // 双指针收尾
     k--;
     while (k--) {
       if (l == 0) {

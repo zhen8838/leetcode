@@ -17,18 +17,13 @@
 class Solution {
  public:
   int guessNumber(int n) {
-    long long l = 0, r = n, mid;
-    while (l <= r) {
-      mid = (l + r) >> 1;
-      if (guess(mid) == 0) {
-        return mid;
-      } else if (guess(mid) == -1) {
-        r = mid;
-      } else if (guess(mid) == 1) {
-        l = mid + 1;
-      }
+    long l = 0, r = n, mid;
+    while (l < r) {
+      mid = l + r >> 1;
+      if (guess(mid) <= 0) r = mid;
+      else l = mid + 1;
     }
-    return mid;
+    return l;
   }
 };
 // @lc code=end
