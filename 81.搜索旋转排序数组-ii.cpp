@@ -8,43 +8,31 @@
 class Solution {
  public:
   bool search(vector<int>& nums, int target) {
-    int l = 0, r = nums.size() - 1, mid;
-    while (l <= r) {
-      mid = (l + r) / 2;
-      // ic(l, mid, r, nums[l], nums[mid], nums[r]);
-      if (nums[mid] == target) {
-        return true;
-      }
-      if (nums[l] == nums[mid]) {
-        l++;  // 避免重复
-        continue;
-      }
-
-      /* 先看前面是不是有序 */
-      if (nums[l] < nums[mid]) {
-        /* 前面是有序的，那么检测当前target在有序部分 */
-        if (nums[l] <= target and target < nums[mid]) {
-          r = mid - 1;
-        } else {
-          l = mid + 1;
-        }
-      } else {
-        /* 后面是有序的，这里需要检查target是不是在有序部分 */
-        if (nums[mid] < target and target <= nums[r]) {
-          l = mid + 1;
-        } else {
-          r = mid - 1;
-        }
-      }
+    int n = nums.size(), l = 0, r = n - 1, mid;
+    // 恢复二段性，通过删除r恢复左边区域的二段性。
+    while (l < r and nums[0] == nums[r]) r--;
+    while (l < r) {
+      mid = l + r + 1 >> 1;
+      if (nums[mid] >= nums[0]) l = mid;
+      else r = mid - 1;
     }
-    return false;
+
+    if (target >= nums[0] and target <= nums[l]) r = l, l = 0;
+    else l = l + 1, r = n - 1;
+
+    while (l < r) {
+      mid = l + r >> 1;
+      if (nums[mid] >= target) r = mid;
+      else l = mid + 1;
+    }
+    return (l<nums.size() and nums[l] == target) ? true : false;
   }
 };
 // @lc code=end
 
 int main(int argc, char const* argv[]) {
-  vector<int> nums{2, 5, 6, 0, 0, 1, 2};
+  vector<int> nums{1};
   Solution s;
-  ic(s.search(nums, 6));
+  ic(s.search(nums, 3));
   return 0;
 }
