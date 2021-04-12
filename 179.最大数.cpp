@@ -38,8 +38,8 @@ class Solution {
 int main(int argc, char const* argv[]) {
   vector<int> nums{0, 1, 3};
 
-  Solution s;
-  ic(s.largestNumber(nums));
-  ic("3" > "34");
+  // Solution s;
+  // ic(s.largestNumber(nums));
+  ic("3" > "30");
   return 0;
 }
