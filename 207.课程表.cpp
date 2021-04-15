@@ -3,6 +3,7 @@
  *
  * [207] 课程表
  */
+#include <unordered_map>
 #include <unordered_set>
 
 #include "commom.hpp"
@@ -10,51 +11,35 @@
 class Solution {
  public:
   bool canFinish(int numCourses, vector<vector<int>>& prerequisites) {
-    // 这个graph没必要开这么大
-    vector<vector<int>> g(numCourses);
+    unordered_map<int, unordered_set<int>> g;
+    int pre;
     for (auto&& pre : prerequisites) {
-      g[pre[0]].push_back(pre[1]);
+      if (not g.count(pre[0])) { g[pre[0]].insert(pre[1]); }
+      if (not g.count(pre[1])) g[pre[1]] = unordered_set<int>();
     }
-    // track 没必要用set
-    // unordered_set<int> track;
-    vector<int> track(numCourses, 0);
-    // ic(g);
-    bool res = true;
-    for (size_t i = 0; i < numCourses; i++) {
-      track[i] = 1;
-      res &= dfs(g, track, i);
-      track[i] = 0;
-    }
-
-    return res;
-  }
-
-  bool dfs(vector<vector<int>>& g, vector<int>& track, int i) {
-    bool res = true;
-    if (g[i].empty()) {
-      return res;
-    }
-
-    for (int j = g[i].size() - 1; j >= 0; j--) {
-      int next = g[i][j];
-      if (track[next]) {
-        return false;
+    queue<int> q;
+    for (auto it = g.begin(); it != g.end();) {
+      if (it->second.empty()) {
+        q.push(it->first);
+        it = g.erase(it);
+      } else {
+        it++;
       }
-      track[next] = 1;
-      // ic(i,j,track);
-      res &= dfs(g, track, next);
-      g[i].pop_back();  //删除这个节点,避免重复遍历
-      track[next] = 0;
     }
-    return res;
-  }
 
-  // int find(int x) {
-  //   if (x != parent[x]) {
-  //     parent[x] = find(parent[x]);
-  //   }
-  //   return parent[x];
-  // }
+    while (q.size()) {
+      pre = q.front(), q.pop();
+      for (auto it = g.begin(); it != g.end();) {
+        if (it->second.count(pre)) { v.erase(pre); }
+        if (v.empty()) {
+          q.push(k);
+          g.erase(k);
+        }
+      }
+    }
+
+    return g.size() == 0;
+  }
 };
 // @lc code=end
 

@@ -42,12 +42,17 @@ class Derive : public Base2, public Base3 {
   void set_var2(int tmp) { var2 = tmp; }
   void set_var3(int tmp) { var3 = tmp; }
   void set_var4(int tmp) { var4 = tmp; }
-
+  void removeself(){
+    // delete this 只适用于当前的类是被new出来的，否则会出现bad alloc的问题。
+    delete this;
+  }
  private:
   int var4;
 };
 
 int main() {
   Derive d;
+  d.removeself();
+  // d.set_var1(10);
   return 0;
 }

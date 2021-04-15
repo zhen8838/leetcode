@@ -8,37 +8,17 @@
 class Solution {
  public:
   int rob(vector<int>& nums) {
-    if (nums.size() == 1) {
-      return nums[0];
+    if (nums.size() == 1) { return nums[0]; }
+    return max(robsingle(nums, 0, nums.size() - 1),
+               robsingle(nums, 1, nums.size()));
+  }
+  int robsingle(vector<int>& nums, int start, int end) {
+    // 今天偷与不偷的最大值
+    vector<int> dp(2, 0);
+    for (int i = start; i < end; i++) {
+      tie(dp[0], dp[1]) = make_tuple(dp[1] + nums[i], max(dp[0], dp[1]));
     }
-
-    /* 两种情况，从[0,n-1] [1,n] */
-    int a_1, b_1, a_2, b_2;
-    for (size_t i = 0; i < nums.size(); i++) {
-      /* 情况1 */
-      if (i < nums.size() - 1) {
-        if (i == 0) {
-          a_1 = nums[i];
-          b_1 = 0;
-        } else {
-          int a_1_bak = a_1, b_1_bak = b_1;
-          a_1 = b_1_bak + nums[i];
-          b_1 = max(a_1_bak, b_1_bak);
-        }
-      }
-      /* 情况2 */
-      if (i > 0) {
-        if (i == 1) {
-          a_2 = nums[i];
-          b_2 = 0;
-        } else {
-          int a_2_bak = a_2, b_2_bak = b_2;
-          a_2 = b_2_bak + nums[i];
-          b_2 = max(a_2_bak, b_2_bak);
-        }
-      }
-    }
-    return max(max(a_1, b_1), max(a_2, b_2));
+    return max(dp[0], dp[1]);
   }
 };
 // @lc code=end

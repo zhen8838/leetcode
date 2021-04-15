@@ -4,7 +4,7 @@
 		{
 			"type": "shell",
 			"label": "build",
-			"command": "g++ -fsanitize=address -fno-omit-frame-pointer -g ${file} -o ${fileDirname}/${fileBasenameNoExtension}.exe",
+			"command": "g++ -std=c++2a -fsanitize=address -fno-omit-frame-pointer -g ${file} -o ${fileDirname}/${fileBasenameNoExtension}.exe",
 			"options": {
 				"cwd": "/usr/bin"
 			},
@@ -15,7 +15,7 @@
 		{
 			"type": "shell",
 			"label": "build and run",
-			"command": "g++ -fsanitize=address -fno-omit-frame-pointer -g ${file} -o ${fileDirname}/${fileBasenameNoExtension}.exe && ${fileDirname}/${fileBasenameNoExtension}.exe",
+			"command": "g++ -std=c++2a -fsanitize=address -fno-omit-frame-pointer -g ${file} -o ${fileDirname}/${fileBasenameNoExtension}.exe && ${fileDirname}/${fileBasenameNoExtension}.exe",
 			"options": {
 				"cwd": "/usr/bin"
 			},
