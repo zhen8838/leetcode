@@ -8,25 +8,17 @@
 class Solution {
  public:
   int nthUglyNumber(int n) {
-    vector<int> dp(n, 0);
-    dp[0] = 1;
-    int pa = 0, pb = 0, pc = 0;
-    int a = 0, b = 0, c = 0;
-    for (int i = 1; i < n; i++) {
-      a = dp[pa] * 2, b = dp[pb] * 3, c = dp[pc] * 5;
-      dp[i] = min({a, b, c});
-      // 一定要三个if防止重复
-      if (dp[i] == a) {
-        pa++;
-      }
-      if (dp[i] == b) {
-        pb++;
-      }
-      if (dp[i] == c) {
-        pc++;
-      }
+    vector<int> dp(n + 1);
+    dp[1] = 1;
+    int p2 = 1, p3 = 1, p5 = 1;
+    for (int i = 2; i <= n; i++) {
+      int num2 = dp[p2] * 2, num3 = dp[p3] * 3, num5 = dp[p5] * 5;
+      dp[i] = min(min(num2, num3), num5);
+      if (dp[i] == num2) { p2++; }
+      if (dp[i] == num3) { p3++; }
+      if (dp[i] == num5) { p5++; }
     }
-    return dp.back();
+    return dp[n];
   }
 };
 // @lc code=end
