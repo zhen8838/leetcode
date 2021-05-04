@@ -1784,7 +1784,7 @@ namespace icecream{ namespace detail
 
         bool enabled_ = true;
 
-        std::ostream stream_ {std::cerr.rdbuf()};
+        std::ostream stream_ {std::cout.rdbuf() };
 
         Prefix prefix_ {[]{return "ic| ";}};
 

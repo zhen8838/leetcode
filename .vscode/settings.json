@@ -89,7 +89,11 @@
         "codecvt": "cpp",
         "complex": "cpp",
         "ios": "cpp",
-        "locale": "cpp"
+        "locale": "cpp",
+        "any": "cpp",
+        "__functional_03": "cpp",
+        "__functional_base_03": "cpp",
+        "__memory": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",

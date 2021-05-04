@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD 20)
  
 #设定头文件路径
 include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/include)
 #include_directories("路径1"  “路径2”...)
  
  
@@ -44,12 +45,22 @@ FetchContent_MakeAvailable(googletest)
  
 #生成可执行文件
 # message(${SOURCE_FILES})
-add_executable(cpp_test /Users/lisa/Documents/leetcode/test_varg.cpp)
+
+macro(add_test name)
+  add_executable(${name} ${name}.cpp)
+  target_link_libraries(${name} PRIVATE gtest_main)
+endmacro(add_test)
+
+file(GLOB TEST_NAMES CONFIGURE_DEPENDS test_*.cpp)
+
+foreach(test_name ${TEST_NAMES}) 
+    get_filename_component(tname ${test_name} NAME_WE)
+    add_test(${tname})
+endforeach()
 #比如：add_executable(hello_world    ${SOURCE_FILES})
  
  
-target_link_libraries(cpp_test gtest_main)#就是g++ 编译选项中-l后的内容，不要有多余空格
-target_link_libraries(cpp_test gtest_main)
+# target_link_libraries(cpp_test gtest_main)#就是g++ 编译选项中-l后的内容，不要有多余空格
 # ADD_CUSTOM_COMMAND( #执行shell命令
 #           TARGET myLevelDB 
 #           POST_BUILD #在目标文件myLevelDBbuild之后，执行下面的拷贝命令，还可以选择PRE_BUILD命令将
