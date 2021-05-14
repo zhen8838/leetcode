@@ -194,10 +194,10 @@ class Mat {
 //   fill_n(m.data, m.total, v);
 // }
 
-template <typename T>
-struct initlist_size {
-  value;
-};
+// template <typename T>
+// struct initlist_size {
+//   value;
+// };
 
 TEST(test_varg, make_from_tuple) {
   // array<int, 3> in_shape{1, 2, 3};
