@@ -1,0 +1,5 @@
+```改变nncase测试输入为顺序
+        input_data = np.arange(np.prod(input_tensor['shape'])).reshape(*input_tensor['shape'][[0,3,1,2]])
+        input_data=np.transpose(input_data,[0,2,3,1])
+```
+

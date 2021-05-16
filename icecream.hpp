@@ -1792,7 +1792,7 @@ namespace icecream{ namespace detail
 
         std::size_t line_wrap_width_ = 70;
 
-        bool show_c_string_ = true;
+        bool show_c_string_ = false;
 
         bool include_context_ = false;
 
