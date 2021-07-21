@@ -42,13 +42,16 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
  
- 
+find_package(xtensor REQUIRED)
+add_compile_options(-Wno-unused-value -Wno-deprecated-anon-enum-enum-conversion)
+
 #生成可执行文件
 # message(${SOURCE_FILES})
 
 macro(add_test name)
   add_executable(${name} ${name}.cpp)
-  target_link_libraries(${name} PRIVATE gtest_main)
+  target_include_directories(${name} PRIVATE ${xtensor_INCLUDE_DIRS})
+  target_link_libraries(${name} PRIVATE gtest_main xtensor)
 endmacro(add_test)
 
 file(GLOB TEST_NAMES CONFIGURE_DEPENDS test_*.cpp)
@@ -58,7 +61,7 @@ foreach(test_name ${TEST_NAMES})
     add_test(${tname})
 endforeach()
 #比如：add_executable(hello_world    ${SOURCE_FILES})
- 
+
  
 # target_link_libraries(cpp_test gtest_main)#就是g++ 编译选项中-l后的内容，不要有多余空格
 # ADD_CUSTOM_COMMAND( #执行shell命令

@@ -2,6 +2,8 @@
     "C_Cpp.errorSquiggles": "Disabled",
     "files.associations": {
         "*.cu": "cpp",
+        "*.stmt": "julia",
+        "*.asm": "julia",
         "cctype": "cpp",
         "clocale": "cpp",
         "cmath": "cpp",
@@ -94,7 +96,8 @@
         "__functional_03": "cpp",
         "__functional_base_03": "cpp",
         "__memory": "cpp",
-        "numbers": "cpp"
+        "numbers": "cpp",
+        "forward_list": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",
@@ -104,4 +107,7 @@
     ],
     "python.pythonPath": "/Users/lisa/mambaforge/envs/py37/bin/python",
     // "C_Cpp.autocomplete": "Disabled"
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    }
 }

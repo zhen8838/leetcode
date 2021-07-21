@@ -4,3 +4,6 @@
 *.DSYM
 .vscode/c_cpp_properties.json
 build
+.DS_Store
+code.gist
+out

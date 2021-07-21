@@ -36,8 +36,10 @@
             "name": "(lldb) 启动",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${fileDirname}/${fileBasenameNoExtension}.exe",
-            "args": [],
+            "program": "${workspaceRoot}/build/test_initlist",
+            "args": [
+                // "--gtest_filter=case1/TestCombine.g_test_combine/0"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
