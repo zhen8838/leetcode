@@ -97,7 +97,9 @@
         "__functional_base_03": "cpp",
         "__memory": "cpp",
         "numbers": "cpp",
-        "forward_list": "cpp"
+        "forward_list": "cpp",
+        "filesystem": "cpp",
+        "*.inc": "cpp"
     },
     "python.formatting.autopep8Args": [
         "--indent-size=4",

@@ -60,6 +60,8 @@ foreach(test_name ${TEST_NAMES})
     get_filename_component(tname ${test_name} NAME_WE)
     add_test(${tname})
 endforeach()
+
+add_subdirectory(meta_program)
 #比如：add_executable(hello_world    ${SOURCE_FILES})
 
  

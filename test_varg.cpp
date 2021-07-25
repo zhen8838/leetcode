@@ -252,69 +252,89 @@ TEST(test_varg, make_from_tuple)
 }
 
 // 尝试使用模板生成
-struct isa_mmu_conf
-{
-  uint8_t a : 4;
-  uint8_t b : 5;
-  uint8_t c : 6;
-  uint8_t d : 7;
-  uint8_t e : 8;
-  uint8_t f : 8;
-};
+#include "isa.h"
 
-typedef union
+template <size_t N>
+struct isaseq_t
 {
-  isa_mmu_conf isa;
-  std::array<uint8_t, sizeof(isa_mmu_conf)> array;
-} isa_mmu_conf_t;
-
-template <size_t Size>
-struct isaeq_t
-{
-public:
-  uint8_t seq[Size];
+  char value[N];
 };
 
 template <size_t N, size_t... I>
-isaeq_t<N> convert_tobyte_impl(const std::array<uint8_t, N> &isaeq, std::index_sequence<I...> indexs)
+constexpr isaseq_t<N> convert_tobyte_impl(const std::array<char, N> &arr, std::index_sequence<I...> indexs)
 {
-  isaeq_t<N> seq;
-  ((seq.seq[I] = isaeq[I]), ...);
+  constexpr isaseq_t<N> seq;
+  ((seq.value[I] = arr[I]), ...);
   return seq;
 }
 
 template <size_t Base, size_t M, size_t N, size_t... I>
-void copy_impl(isaeq_t<M> &dest, const isaeq_t<N> &src, std::index_sequence<I...> indexs)
+void copy_impl(isaseq_t<M> &dest, const isaseq_t<N> &src, std::index_sequence<I...> indexs)
 {
-  ((dest.seq[Base + I] = src.seq[I]), ...);
+  ((dest.value[Base + I] = src.value[I]), ...);
 }
 
 template <size_t N, typename Indices = std::make_index_sequence<N>>
-isaeq_t<N> convert_tobyte(const std::array<uint8_t, N> &isaeq)
+constexpr isaseq_t<N> convert_tobyte(const std::array<char, N> &isaseq_t)
 {
-  return convert_tobyte_impl(isaeq, Indices{});
+  return convert_tobyte_impl(isaseq_t, Indices{});
 }
 
 template <size_t N, size_t M,
           typename IndicesN = std::make_index_sequence<N>,
           typename IndicesM = std::make_index_sequence<M>>
-isaeq_t<N + M> concat_seq(const isaeq_t<N> &a, const isaeq_t<M> &b)
+constexpr isaseq_t<N + M> concat_seq(const isaseq_t<N> &a, const isaseq_t<M> &b)
 {
-  isaeq_t<N + M> seq;
+  constexpr isaseq_t<N + M> seq;
   copy_impl<0>(seq, a, IndicesN{});
   copy_impl<N>(seq, b, IndicesM{});
   return seq;
 }
 
-TEST(test_isa, static_isa)
+template <char... Bytes>
+using byte_sequence = std::integer_sequence<char, Bytes...>;
+
+template <typename T>
+struct identity
 {
-  constexpr isa_mmu_conf_t a{1, 2, 3, 4, 5, 6};
-  constexpr isa_mmu_conf_t b{3, 1, 4, 2, 5, 6};
-  // static_cast<uint8_t> a;
-  ic(sizeof(a), sizeof(b));
-  // ic(a.array::size);
-  auto seqa = convert_tobyte(a.array);
-  auto seqb = convert_tobyte(b.array);
-  auto seqc = concat_seq(seqa, seqb);
-  
-}
+  using type = T;
+};
+
+template <typename Lhs, typename Rhs>
+struct byte_sequence_concat
+{
+};
+
+template <char... Lhs, char... Rhs>
+struct byte_sequence_concat<byte_sequence<Lhs...>,
+                            byte_sequence<Rhs...>>
+    : identity<byte_sequence<Lhs..., Rhs...>>
+{
+};
+
+// template <INST_MFU_MN_CONF Inst>
+// struct make_byte_sequence_impl : std::make_index_sequence<sizeof(INST_MFU_MN_CONF)>
+// {
+// };
+
+// using namespace nncase::runtime::k510::isa;
+// #define inst_mn_conf_ ((const char *)(&inst_mn_conf));
+
+// TEST(test_isa, static_isa)
+// {
+//   constexpr INST_MFU_MN_CONF inst_mn_conf{
+//       OPCODE_MFU_MN_CONF,
+//       MFU_MN_PORTOUT_SQR_IN_0,
+//       MFU_MN_PORTOUT_DUMMY};
+
+//   constexpr INST_MFU_MN_MAP_COMPUTE inst_mn_map_compute{};
+
+//   ic(sizeof(inst_mn_conf), sizeof(inst_mn_map_compute));
+//   constexpr byte_sequence<0x00, 0x01> b;
+//   ic(sizeof(inst_mn_conf), sizeof(INST_MFU_MN_CONF));
+//   ic(sizeof(b));
+//   // ic(a.array::size);
+//   // auto seqa = convert_tobyte(a.array);
+//   // auto seqb = convert_tobyte(b.array);
+//   // auto seqc = concat_seq(seqa, seqb);
+// }
