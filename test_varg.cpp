@@ -308,7 +308,7 @@ struct byte_sequence_concat
 template <char... Lhs, char... Rhs>
 struct byte_sequence_concat<byte_sequence<Lhs...>,
                             byte_sequence<Rhs...>>
-    : identity<byte_sequence<Lhs..., Rhs...>>
+    : byte_sequence<Lhs..., Rhs...>
 {
 };
 

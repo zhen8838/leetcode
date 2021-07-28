@@ -62,6 +62,7 @@ foreach(test_name ${TEST_NAMES})
 endforeach()
 
 add_subdirectory(meta_program)
+add_subdirectory(meta_pratice)
 #比如：add_executable(hello_world    ${SOURCE_FILES})
 
  
