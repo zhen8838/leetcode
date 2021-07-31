@@ -12,16 +12,16 @@
 #include <string>
 #include <vector>
 #include <type_traits>
+#include <tuple>
 
 #include "icecream.hpp"
-using namespace std;
 #define ic IC
 
 template <typename T>
-using Mat = vector<vector<T>>;
+using Mat = std::vector<std::vector<T>>;
 
 template <typename T>
-using Vec = vector<T>;
+using Vec = std::vector<T>;
 
 struct ListNode {
   int val;
@@ -41,7 +41,7 @@ struct TreeNode {
       : val(x), left(left), right(right) {}
 };
 
-ListNode* vector2list(vector<int>& nums) {
+ListNode* vector2list(std::vector<int>& nums) {
   ListNode *head = nullptr, *cur = nullptr;
   for (auto&& v : nums) {
     if (!head) {
@@ -55,8 +55,8 @@ ListNode* vector2list(vector<int>& nums) {
   return head;
 }
 
-TreeNode* vector2tree(vector<int>& nums) {
-  queue<TreeNode*> nl;
+TreeNode* vector2tree(std::vector<int>& nums) {
+  std::queue<TreeNode*> nl;
   TreeNode* root = new TreeNode(nums.front());
   nums.erase(nums.begin());
   nl.push(root);
@@ -90,28 +90,28 @@ TreeNode* vector2tree(vector<int>& nums) {
 }
 
 template <typename K, typename V>
-void pmap(const map<K, V>& dict) {
+void pmap(const std::map<K, V>& dict) {
   for (auto&& item : dict) {
-    cout << item.first << ' ' << item.second << ',';
+    std::cout << item.first << ' ' << item.second << ',';
   }
-  cout << endl;
+  std::cout << std::endl;
 }
 
 template <typename V>
-void pvec(const vector<V>& v) {
+void pvec(const std::vector<V>& v) {
   for (auto&& item : v) {
-    cout << item << ' ';
+    std::cout << item << ' ';
   }
-  cout << endl;
+  std::cout << std::endl;
 }
 
 template <typename T>
 void pscalr(const T& t) {
-  cout << t << endl;
+  std::cout << t << std::endl;
 }
 
 template <typename T, typename... Args>
 void pscalr(const T& t, Args... args) {
-  cout << t << ", ";
+  std::cout << t << ", ";
   pscalr(args...);
 }

@@ -4,23 +4,23 @@
 
 class StrBlob {
  public:
-  shared_ptr<vector<string>> data;
+  std::shared_ptr<std::vector<std::string>> data;
 
-  StrBlob() : data(make_shared<vector<string>>()){};
-  StrBlob(initializer_list<string> il)
-      : data(make_shared<vector<string>>(il)){};
+  StrBlob() : data(std::make_shared<std::vector<std::string>>()){};
+  StrBlob(std::initializer_list<std::string> il)
+      : data(std::make_shared<std::vector<std::string>>(il)){};
   size_t size() { return data->size(); };
   size_t use_count() { return data.use_count(); };
 
-  const string& front() {
+  const std::string& front() {
     check(0, "front");
     return data->front();
   }
-  const string& back() {
+  const std::string& back() {
     check(0, "back");
     return data->back();
   }
-  void push_back(const string& s) { data->push_back(s); }
+  void push_back(const std::string& s) { data->push_back(s); }
   void pop_back() {
     check(0, "pop_back");
     data->pop_back();
@@ -32,15 +32,15 @@ class StrBlob {
   }
 
  private:
-  void check(size_t i, const string& msg) const {
-    if (i >= data->size()) { throw out_of_range(msg); }
+  void check(size_t i, const std::string& msg) const {
+    if (i >= data->size()) { throw std::out_of_range(msg); }
   }
 };
 
 TEST(test, shared_ptr_copy) {
-  auto p = make_shared<int>(10);
+  auto p = std::make_shared<int>(10);
   {
-    auto q = make_shared<int>(11);
+    auto q = std::make_shared<int>(11);
     p = q;
     ic(*q, q.use_count());
     ic(*p, p.use_count());
@@ -52,10 +52,10 @@ TEST(test, t_12_1) {
   StrBlob b1;
   {
     StrBlob b2 = {"a", "bc", "de"};
-    cout << b1.use_count() << endl;
+    std::cout << b1.use_count() << std::endl;
     b1 = b2;
-    cout << b1.use_count() << endl;
-    cout << b2.use_count() << endl;
+    std::cout << b1.use_count() << std::endl;
+    std::cout << b2.use_count() << std::endl;
     b2.push_back("fg");
     ic(*b1.data);
     ic(*b2.data);
@@ -71,20 +71,20 @@ TEST(test, t_12_5) {
 }
 
 auto create_vector() {
-  return make_shared<vector<int>>(initializer_list<int>{1, 2, 3});
+  return std::make_shared<std::vector<int>>(std::initializer_list<int>{1, 2, 3});
 }
-void read_vector(shared_ptr<vector<int>> v) { v->push_back(12); }
-void print_vector(shared_ptr<vector<int>> v) { ic(*v); }
+void read_vector(std::shared_ptr<std::vector<int>> v) { v->push_back(12); }
+void print_vector(std::shared_ptr<std::vector<int>> v) { ic(*v); }
 
 TEST(test, shared_ptr_construt) {
-  auto a = shared_ptr<int>(new int(32));
+  auto a = std::shared_ptr<int>(new int(32));
   ic(*a);
-  auto b = make_shared<vector<int>>(10, 20);
+  auto b = std::make_shared<std::vector<int>>(10, 20);
   ic(*b);
 }
 
 TEST(test, t_12_6) {
-  shared_ptr<vector<int>> p = create_vector();
+  std::shared_ptr<std::vector<int>> p = create_vector();
   read_vector(p);
   print_vector(p);
 }

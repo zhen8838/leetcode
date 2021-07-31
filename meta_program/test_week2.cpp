@@ -4,21 +4,21 @@
 class Object
 {
 private:
-  string name;
+  std::string name;
 
 public:
-  Object(string new_name) : name(new_name) {}
+  Object(std::string new_name) : name(new_name) {}
   void operator=(Object other)
   {
     name = other.name;
   }
-  const string &get_name() const
+  const std::string &get_name() const
   {
     return name;
   }
 };
 
-std::ostream &operator<<(ostream &os, const Object &obj)
+std::ostream &operator<<(std::ostream &os, const Object &obj)
 {
   os << obj.get_name();
   return os;
@@ -27,14 +27,14 @@ std::ostream &operator<<(ostream &os, const Object &obj)
 template <typename Iter>
 void swap_iter(Iter a, Iter b)
 {
-  typename iterator_traits<Iter>::value_type c = *a;
+  typename std::iterator_traits<Iter>::value_type c = *a;
   *a = *b;
   *b = c;
 }
 
 TEST(test, chapter_2_1_1)
 {
-  vector<int> arr{1, 2, 3, 4};
+  std::vector<int> arr{1, 2, 3, 4};
   // 对于原生迭代器,可以方便的获取他的value type
   ic(arr);
   swap_iter(arr.begin(), arr.begin() + 1);
@@ -43,7 +43,7 @@ TEST(test, chapter_2_1_1)
 
 // NOTE 我们可以利用type traits给Object对象添加swap的适配
 template <>
-struct iterator_traits<Object *>
+struct std::iterator_traits<Object *>
 {
   typedef Object value_type;
 };

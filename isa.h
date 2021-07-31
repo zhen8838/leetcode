@@ -26,214 +26,6 @@
 
 #define GNNE_INST_ASSERT assert
 
-class bitreader
-{
-public:
-  bitreader(std::span<const uint8_t> data)
-      : data_(data), buffer_(0), avail_(0) {}
-
-  void read(uint8_t *dest, size_t bits)
-  {
-    while (bits)
-    {
-      auto to_read = std::min(bits, size_t(8));
-      *dest++ = read_bits_le8(to_read);
-      bits -= to_read;
-    }
-  }
-
-  template <class T, size_t Bits>
-  T read()
-  {
-    T ret{};
-    read(reinterpret_cast<uint8_t *>(&ret), Bits);
-    return ret;
-  }
-
-private:
-  uint8_t read_bits_le8(size_t bits)
-  {
-    assert(bits <= 8);
-
-    fill_buffer_le8(bits);
-    uint8_t ret = buffer_ & ((size_t(1) << bits) - 1);
-    buffer_ >>= bits;
-    avail_ -= bits;
-    return ret;
-  }
-
-  void fill_buffer_le8(size_t bits)
-  {
-    if (avail_ < bits)
-    {
-      auto max_read_bytes = std::min(data_.size() * 8, sizeof(buffer_) * 8 - avail_) / 8;
-      assert(max_read_bytes != 0);
-
-      uint64_t tmp = 0;
-      std::memcpy(&tmp, data_.data(), max_read_bytes);
-      data_ = data_.subspan(max_read_bytes);
-      buffer_ = buffer_ | (tmp << avail_);
-      avail_ += max_read_bytes * 8;
-    }
-  }
-
-private:
-  std::span<const uint8_t> data_;
-  uint64_t buffer_;
-  size_t avail_;
-};
-
-class bitwriter
-{
-public:
-  bitwriter(std::span<uint8_t> data, size_t bitoffset = 0)
-      : data_(data), buffer_(0), avail_(sizeof(buffer_) * 8)
-  {
-    if (bitoffset)
-    {
-      data_ = data_.subspan(bitoffset / 8);
-      bitoffset %= 8;
-      buffer_ = data_.front() & ((size_t(1) << bitoffset) - 1);
-      avail_ -= bitoffset;
-    }
-  }
-
-  ~bitwriter() { flush(); }
-
-  void write(const uint8_t *src, size_t bits)
-  {
-    while (bits)
-    {
-      auto to_write = std::min(bits, size_t(8));
-      write_bits_le8(*src++, to_write);
-      bits -= to_write;
-    }
-  }
-
-  template <size_t Bits, class T>
-  void write(T value)
-  {
-    write(reinterpret_cast<const uint8_t *>(&value), Bits);
-  }
-
-  void flush()
-  {
-    auto write_bytes = (buffer_written_bits() + 7) / 8;
-    if (write_bytes)
-    {
-      assert(data_.size() >= write_bytes);
-
-      std::memcpy(data_.data(), &buffer_, write_bytes);
-      data_ = data_.subspan(write_bytes);
-      buffer_ = 0;
-      avail_ = sizeof(buffer_) * 8;
-    }
-  }
-
-private:
-  void write_bits_le8(uint8_t value, size_t bits)
-  {
-    assert(bits <= 8);
-
-    reserve_buffer_8();
-    size_t new_value = value & ((size_t(1) << bits) - 1);
-    buffer_ = buffer_ | (new_value << buffer_written_bits());
-    avail_ -= bits;
-  }
-
-  void reserve_buffer_8()
-  {
-    if (avail_ < 8)
-    {
-      auto write_bytes = buffer_written_bits() / 8;
-      assert(data_.size() >= write_bytes);
-
-      std::memcpy(data_.data(), &buffer_, write_bytes);
-      data_ = data_.subspan(write_bytes);
-      if (write_bytes == sizeof(buffer_))
-        buffer_ = 0;
-      else
-        buffer_ >>= write_bytes * 8;
-      avail_ += write_bytes * 8;
-    }
-  }
-
-  size_t buffer_written_bits() const noexcept
-  {
-    return sizeof(buffer_) * 8 - avail_;
-  }
-
-private:
-  std::span<uint8_t> data_;
-  uint64_t buffer_;
-  size_t avail_;
-};
-
-class binary_writer
-{
-public:
-  binary_writer(std::ostream &stream)
-      : stream_(stream), relative_offset_(0)
-  {
-  }
-
-  template <class T>
-  void write(T &&value)
-  {
-    stream_.write(reinterpret_cast<const char *>(&value), sizeof(value));
-    relative_offset_ += sizeof(value);
-  }
-
-  template <class T>
-  void write_array(std::span<T const> value)
-  {
-    stream_.write(reinterpret_cast<const char *>(value.data()), value.size_bytes());
-    relative_offset_ += value.size_bytes();
-  }
-
-  std::streampos position() const
-  {
-    assert(stream_);
-    return stream_.tellp();
-  }
-
-  void position(std::streampos pos)
-  {
-    auto old_pos = position();
-    stream_.seekp(pos);
-    assert(stream_);
-    relative_offset_ += pos - old_pos;
-  }
-
-  void skip(size_t len)
-  {
-    char zero = 0;
-    for (size_t i = 0; i < len; i++)
-      stream_.write(&zero, 1);
-    relative_offset_ += len;
-  }
-
-  std::streamoff align_position(size_t alignment)
-  {
-    auto pos = position();
-    auto rem = pos % alignment;
-    if (rem != 0)
-    {
-      auto off = std::streamoff(alignment - rem);
-      skip(off);
-      return off;
-    }
-
-    return 0;
-  }
-
-  int64_t relative_offset() const noexcept { return relative_offset_; }
-
-private:
-  std::ostream &stream_;
-  int64_t relative_offset_;
-};
-
 namespace nncase::runtime::k510::isa
 {
   typedef uint64_t ADDR;
@@ -1478,9 +1270,9 @@ namespace nncase::runtime::k510::isa
   {
     OPCODE opcode : 8; /** 无操作 **/
 
-    void serialize(bitwriter &bw) const { bw.write<8>(opcode); }
+    // void serialize(bitwriter &bw) const { bw.write<8>(opcode); }
 
-    void deserialize(bitreader &br) { opcode = br.read<decltype(opcode), 8>(); }
+    // void deserialize(bitreader &br) { opcode = br.read<decltype(opcode), 8>(); }
   };
 
   /**
@@ -1500,19 +1292,19 @@ namespace nncase::runtime::k510::isa
 {== TODO：是否要编码其他内容 ==} **/
     uint64_t imm : 64; /** 立即数 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<5>(regid);
-      bw.write<64>(imm);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<5>(regid);
+    //   bw.write<64>(imm);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      regid = br.read<decltype(regid), 5>();
-      imm = br.read<decltype(imm), 64>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   regid = br.read<decltype(regid), 5>();
+    //   imm = br.read<decltype(imm), 64>();
+    // }
   };
 
   /**
@@ -1533,21 +1325,21 @@ namespace nncase::runtime::k510::isa
                             标记寄存器里的内容是指针类型还是数据，用于设置ptrmask寄存器
                             **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<32>(intr_number);
-      bw.write<32>(regmask);
-      bw.write<32>(ptrmask);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<32>(intr_number);
+    //   bw.write<32>(regmask);
+    //   bw.write<32>(ptrmask);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      intr_number = br.read<decltype(intr_number), 32>();
-      regmask = br.read<decltype(regmask), 32>();
-      ptrmask = br.read<decltype(ptrmask), 32>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   intr_number = br.read<decltype(intr_number), 32>();
+    //   regmask = br.read<decltype(regmask), 32>();
+    //   ptrmask = br.read<decltype(ptrmask), 32>();
+    // }
   };
 
   /**
@@ -1561,17 +1353,17 @@ namespace nncase::runtime::k510::isa
     OPCODE opcode : 8;         /** 表示GNNE程序执行结束，GNNE向总中断控制器发起中断 **/
     uint64_t intr_number : 32; /** 中断号，用于设置inptr寄存器 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<32>(intr_number);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<32>(intr_number);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      intr_number = br.read<decltype(intr_number), 32>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   intr_number = br.read<decltype(intr_number), 32>();
+    // }
   };
 
   /**
@@ -1586,9 +1378,9 @@ namespace nncase::runtime::k510::isa
                         设置内存屏障。在屏障前面的指令一定都执行完成，后面的指令才会被执行
                         **/
 
-    void serialize(bitwriter &bw) const { bw.write<8>(opcode); }
+    // void serialize(bitwriter &bw) const { bw.write<8>(opcode); }
 
-    void deserialize(bitreader &br) { opcode = br.read<decltype(opcode), 8>(); }
+    // void deserialize(bitreader &br) { opcode = br.read<decltype(opcode), 8>(); }
   };
 
   /**
@@ -1613,25 +1405,25 @@ namespace nncase::runtime::k510::isa
                                 当前规则深度。这个值是相对与开始深度的差值，注意是深度而不是结束深度。
                                 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(mmu_item);
-      bw.write<3>(start_bank);
-      bw.write<2>(width);
-      bw.write<14>(start_depth);
-      bw.write<14>(depth);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(mmu_item);
+    //   bw.write<3>(start_bank);
+    //   bw.write<2>(width);
+    //   bw.write<14>(start_depth);
+    //   bw.write<14>(depth);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      mmu_item = br.read<decltype(mmu_item), 4>();
-      start_bank = br.read<decltype(start_bank), 3>();
-      width = br.read<decltype(width), 2>();
-      start_depth = br.read<decltype(start_depth), 14>();
-      depth = br.read<decltype(depth), 14>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   mmu_item = br.read<decltype(mmu_item), 4>();
+    //   start_bank = br.read<decltype(start_bank), 3>();
+    //   width = br.read<decltype(width), 2>();
+    //   start_depth = br.read<decltype(start_depth), 14>();
+    //   depth = br.read<decltype(depth), 14>();
+    // }
   };
 
   /**
@@ -1653,19 +1445,19 @@ CCR屏障，用来阻挡使用到本CCR的指令的分发，可以用来实现�
     uint64_t mode : 1; /** 0: wait ccr is 0
 1: wait ccr is not 0 and clear ccr **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<6>(ccr);
-      bw.write<1>(mode);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<6>(ccr);
+    //   bw.write<1>(mode);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccr = br.read<decltype(ccr), 6>();
-      mode = br.read<decltype(mode), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccr = br.read<decltype(ccr), 6>();
+    //   mode = br.read<decltype(mode), 1>();
+    // }
   };
 
   /**
@@ -1704,37 +1496,37 @@ CCR屏障，用来阻挡使用到本CCR的指令的分发，可以用来实现�
     PRECISION_DDR precision_ddr : 3; /** DDR 中的数据类型 **/
     QUAN_TYPE quan_type : 1;         /** 量化类型，bychennel or by batch **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<16>(layout_ddr_n);
-      bw.write<16>(layout_ddr_c);
-      bw.write<16>(layout_ddr_h);
-      bw.write<16>(layout_ddr_w);
-      bw.write<64>(stride_glb);
-      bw.write<4>(mmu_item);
-      bw.write<25>(addr_qarg);
-      bw.write<1>(input_signed);
-      bw.write<2>(precision_glb);
-      bw.write<3>(precision_ddr);
-      bw.write<1>(quan_type);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<16>(layout_ddr_n);
+    //   bw.write<16>(layout_ddr_c);
+    //   bw.write<16>(layout_ddr_h);
+    //   bw.write<16>(layout_ddr_w);
+    //   bw.write<64>(stride_glb);
+    //   bw.write<4>(mmu_item);
+    //   bw.write<25>(addr_qarg);
+    //   bw.write<1>(input_signed);
+    //   bw.write<2>(precision_glb);
+    //   bw.write<3>(precision_ddr);
+    //   bw.write<1>(quan_type);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      layout_ddr_n = br.read<decltype(layout_ddr_n), 16>();
-      layout_ddr_c = br.read<decltype(layout_ddr_c), 16>();
-      layout_ddr_h = br.read<decltype(layout_ddr_h), 16>();
-      layout_ddr_w = br.read<decltype(layout_ddr_w), 16>();
-      stride_glb = br.read<decltype(stride_glb), 64>();
-      mmu_item = br.read<decltype(mmu_item), 4>();
-      addr_qarg = br.read<decltype(addr_qarg), 25>();
-      input_signed = br.read<decltype(input_signed), 1>();
-      precision_glb = br.read<decltype(precision_glb), 2>();
-      precision_ddr = br.read<decltype(precision_ddr), 3>();
-      quan_type = br.read<decltype(quan_type), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   layout_ddr_n = br.read<decltype(layout_ddr_n), 16>();
+    //   layout_ddr_c = br.read<decltype(layout_ddr_c), 16>();
+    //   layout_ddr_h = br.read<decltype(layout_ddr_h), 16>();
+    //   layout_ddr_w = br.read<decltype(layout_ddr_w), 16>();
+    //   stride_glb = br.read<decltype(stride_glb), 64>();
+    //   mmu_item = br.read<decltype(mmu_item), 4>();
+    //   addr_qarg = br.read<decltype(addr_qarg), 25>();
+    //   input_signed = br.read<decltype(input_signed), 1>();
+    //   precision_glb = br.read<decltype(precision_glb), 2>();
+    //   precision_ddr = br.read<decltype(precision_ddr), 3>();
+    //   quan_type = br.read<decltype(quan_type), 1>();
+    // }
   };
 
   /**
@@ -1768,35 +1560,35 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
     uint64_t basement : 2;    /** DDR寻址偏移寄存器编号。
 DDR访问的地址需要加上这个寄存器指示的寄存器的值 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<8>(ccrclr_qarg);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src);
-      bw.write<21>(addr_dest);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<2>(basement);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<8>(ccrclr_qarg);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src);
+    //   bw.write<21>(addr_dest);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<2>(basement);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 32>();
-      addr_dest = br.read<decltype(addr_dest), 21>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      basement = br.read<decltype(basement), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 21>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   basement = br.read<decltype(basement), 2>();
+    // }
   };
 
   /**
@@ -1844,43 +1636,43 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
     PRECISION_DDR precision_ddr : 3; /** DDR 中的数据类型 **/
     uint64_t stream : 1;             /** 是否为流式输入 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<8>(ccrclr_qarg);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src);
-      bw.write<25>(addr_dest);
-      bw.write<21>(length);
-      bw.write<25>(addr_qarg);
-      bw.write<16>(chan_qarg);
-      bw.write<16>(shape_c);
-      bw.write<2>(basement);
-      bw.write<1>(input_signed);
-      bw.write<2>(precision_glb);
-      bw.write<3>(precision_ddr);
-      bw.write<1>(stream);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<8>(ccrclr_qarg);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<21>(length);
+    //   bw.write<25>(addr_qarg);
+    //   bw.write<16>(chan_qarg);
+    //   bw.write<16>(shape_c);
+    //   bw.write<2>(basement);
+    //   bw.write<1>(input_signed);
+    //   bw.write<2>(precision_glb);
+    //   bw.write<3>(precision_ddr);
+    //   bw.write<1>(stream);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 32>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      length = br.read<decltype(length), 21>();
-      addr_qarg = br.read<decltype(addr_qarg), 25>();
-      chan_qarg = br.read<decltype(chan_qarg), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      basement = br.read<decltype(basement), 2>();
-      input_signed = br.read<decltype(input_signed), 1>();
-      precision_glb = br.read<decltype(precision_glb), 2>();
-      precision_ddr = br.read<decltype(precision_ddr), 3>();
-      stream = br.read<decltype(stream), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   length = br.read<decltype(length), 21>();
+    //   addr_qarg = br.read<decltype(addr_qarg), 25>();
+    //   chan_qarg = br.read<decltype(chan_qarg), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   basement = br.read<decltype(basement), 2>();
+    //   input_signed = br.read<decltype(input_signed), 1>();
+    //   precision_glb = br.read<decltype(precision_glb), 2>();
+    //   precision_ddr = br.read<decltype(precision_ddr), 3>();
+    //   stream = br.read<decltype(stream), 1>();
+    // }
   };
 
   /**
@@ -1904,27 +1696,27 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
     SPARSIFIED sparsified_ddr : 1; /** 是否稀疏 **/
     COMPRESSED compress_ddr : 1;   /** 是否压缩 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<32>(addr_bmp);
-      bw.write<32>(addr_code_len);
-      bw.write<32>(addr_block_len);
-      bw.write<4>(code_lines);
-      bw.write<1>(sparsified_ddr);
-      bw.write<1>(compress_ddr);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<32>(addr_bmp);
+    //   bw.write<32>(addr_code_len);
+    //   bw.write<32>(addr_block_len);
+    //   bw.write<4>(code_lines);
+    //   bw.write<1>(sparsified_ddr);
+    //   bw.write<1>(compress_ddr);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      addr_bmp = br.read<decltype(addr_bmp), 32>();
-      addr_code_len = br.read<decltype(addr_code_len), 32>();
-      addr_block_len = br.read<decltype(addr_block_len), 32>();
-      code_lines = br.read<decltype(code_lines), 4>();
-      sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
-      compress_ddr = br.read<decltype(compress_ddr), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   addr_bmp = br.read<decltype(addr_bmp), 32>();
+    //   addr_code_len = br.read<decltype(addr_code_len), 32>();
+    //   addr_block_len = br.read<decltype(addr_block_len), 32>();
+    //   code_lines = br.read<decltype(code_lines), 4>();
+    //   sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
+    //   compress_ddr = br.read<decltype(compress_ddr), 1>();
+    // }
   };
 
   /**
@@ -1942,21 +1734,21 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
     ADDR addr_code_len : 32;       /** 每一行编码之后的长度存放的地址 **/
     SPARSIFIED sparsified_ddr : 1; /** 是否稀疏 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<32>(addr_bmp);
-      bw.write<32>(addr_code_len);
-      bw.write<1>(sparsified_ddr);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<32>(addr_bmp);
+    //   bw.write<32>(addr_code_len);
+    //   bw.write<1>(sparsified_ddr);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      addr_bmp = br.read<decltype(addr_bmp), 32>();
-      addr_code_len = br.read<decltype(addr_code_len), 32>();
-      sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   addr_bmp = br.read<decltype(addr_bmp), 32>();
+    //   addr_code_len = br.read<decltype(addr_code_len), 32>();
+    //   sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
+    // }
   };
 
   /**
@@ -2001,45 +1793,45 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
     uint64_t clamp_lo : 16;          /** None **/
     uint64_t basement : 2;           /** DDR寻址偏移寄存器编号 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<8>(ccrclr_qarg);
-      bw.write<11>(ccrset);
-      bw.write<25>(addr_src);
-      bw.write<32>(addr_dest);
-      bw.write<2>(precision_glb);
-      bw.write<3>(precision_ddr);
-      bw.write<1>(output_signed);
-      bw.write<21>(length);
-      bw.write<25>(addr_qarg);
-      bw.write<16>(chan_qarg);
-      bw.write<16>(shape_c);
-      bw.write<16>(clamp_hi);
-      bw.write<16>(clamp_lo);
-      bw.write<2>(basement);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<8>(ccrclr_qarg);
+    //   bw.write<11>(ccrset);
+    //   bw.write<25>(addr_src);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<2>(precision_glb);
+    //   bw.write<3>(precision_ddr);
+    //   bw.write<1>(output_signed);
+    //   bw.write<21>(length);
+    //   bw.write<25>(addr_qarg);
+    //   bw.write<16>(chan_qarg);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(clamp_hi);
+    //   bw.write<16>(clamp_lo);
+    //   bw.write<2>(basement);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 25>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      precision_glb = br.read<decltype(precision_glb), 2>();
-      precision_ddr = br.read<decltype(precision_ddr), 3>();
-      output_signed = br.read<decltype(output_signed), 1>();
-      length = br.read<decltype(length), 21>();
-      addr_qarg = br.read<decltype(addr_qarg), 25>();
-      chan_qarg = br.read<decltype(chan_qarg), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      clamp_hi = br.read<decltype(clamp_hi), 16>();
-      clamp_lo = br.read<decltype(clamp_lo), 16>();
-      basement = br.read<decltype(basement), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   precision_glb = br.read<decltype(precision_glb), 2>();
+    //   precision_ddr = br.read<decltype(precision_ddr), 3>();
+    //   output_signed = br.read<decltype(output_signed), 1>();
+    //   length = br.read<decltype(length), 21>();
+    //   addr_qarg = br.read<decltype(addr_qarg), 25>();
+    //   chan_qarg = br.read<decltype(chan_qarg), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   clamp_hi = br.read<decltype(clamp_hi), 16>();
+    //   clamp_lo = br.read<decltype(clamp_lo), 16>();
+    //   basement = br.read<decltype(basement), 2>();
+    // }
   };
 
   /**
@@ -2077,41 +1869,41 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
     uint64_t clamp_hi : 16;          /** None **/
     uint64_t clamp_lo : 16;          /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<16>(layout_ddr_n);
-      bw.write<16>(layout_ddr_c);
-      bw.write<16>(layout_ddr_h);
-      bw.write<16>(layout_ddr_w);
-      bw.write<64>(stride_glb);
-      bw.write<4>(mmu_item);
-      bw.write<25>(addr_qarg);
-      bw.write<1>(output_signed);
-      bw.write<2>(precision_glb);
-      bw.write<3>(precision_ddr);
-      bw.write<1>(quan_type);
-      bw.write<16>(clamp_hi);
-      bw.write<16>(clamp_lo);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<16>(layout_ddr_n);
+    //   bw.write<16>(layout_ddr_c);
+    //   bw.write<16>(layout_ddr_h);
+    //   bw.write<16>(layout_ddr_w);
+    //   bw.write<64>(stride_glb);
+    //   bw.write<4>(mmu_item);
+    //   bw.write<25>(addr_qarg);
+    //   bw.write<1>(output_signed);
+    //   bw.write<2>(precision_glb);
+    //   bw.write<3>(precision_ddr);
+    //   bw.write<1>(quan_type);
+    //   bw.write<16>(clamp_hi);
+    //   bw.write<16>(clamp_lo);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      layout_ddr_n = br.read<decltype(layout_ddr_n), 16>();
-      layout_ddr_c = br.read<decltype(layout_ddr_c), 16>();
-      layout_ddr_h = br.read<decltype(layout_ddr_h), 16>();
-      layout_ddr_w = br.read<decltype(layout_ddr_w), 16>();
-      stride_glb = br.read<decltype(stride_glb), 64>();
-      mmu_item = br.read<decltype(mmu_item), 4>();
-      addr_qarg = br.read<decltype(addr_qarg), 25>();
-      output_signed = br.read<decltype(output_signed), 1>();
-      precision_glb = br.read<decltype(precision_glb), 2>();
-      precision_ddr = br.read<decltype(precision_ddr), 3>();
-      quan_type = br.read<decltype(quan_type), 1>();
-      clamp_hi = br.read<decltype(clamp_hi), 16>();
-      clamp_lo = br.read<decltype(clamp_lo), 16>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   layout_ddr_n = br.read<decltype(layout_ddr_n), 16>();
+    //   layout_ddr_c = br.read<decltype(layout_ddr_c), 16>();
+    //   layout_ddr_h = br.read<decltype(layout_ddr_h), 16>();
+    //   layout_ddr_w = br.read<decltype(layout_ddr_w), 16>();
+    //   stride_glb = br.read<decltype(stride_glb), 64>();
+    //   mmu_item = br.read<decltype(mmu_item), 4>();
+    //   addr_qarg = br.read<decltype(addr_qarg), 25>();
+    //   output_signed = br.read<decltype(output_signed), 1>();
+    //   precision_glb = br.read<decltype(precision_glb), 2>();
+    //   precision_ddr = br.read<decltype(precision_ddr), 3>();
+    //   quan_type = br.read<decltype(quan_type), 1>();
+    //   clamp_hi = br.read<decltype(clamp_hi), 16>();
+    //   clamp_lo = br.read<decltype(clamp_lo), 16>();
+    // }
   };
 
   /**
@@ -2145,35 +1937,35 @@ DDR，并且可能发生转置或者数据类型转换
     uint64_t shape_w : 16;    /** Slice 长度信息 **/
     uint64_t basement : 2;    /** DDR寻址偏移寄存器编号 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<8>(ccrclr_qarg);
-      bw.write<11>(ccrset);
-      bw.write<21>(addr_src);
-      bw.write<32>(addr_dest);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<2>(basement);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<8>(ccrclr_qarg);
+    //   bw.write<11>(ccrset);
+    //   bw.write<21>(addr_src);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<2>(basement);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 21>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      basement = br.read<decltype(basement), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrclr_qarg = br.read<decltype(ccrclr_qarg), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 21>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   basement = br.read<decltype(basement), 2>();
+    // }
   };
 
   /**
@@ -2197,27 +1989,27 @@ DDR，并且可能发生转置或者数据类型转换
     SPARSIFIED sparsified_ddr : 1; /** 是否稀疏 **/
     COMPRESSED compress_ddr : 1;   /** 是否压缩 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<32>(addr_bmp);
-      bw.write<32>(addr_code_len);
-      bw.write<32>(addr_block_len);
-      bw.write<4>(code_lines);
-      bw.write<1>(sparsified_ddr);
-      bw.write<1>(compress_ddr);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<32>(addr_bmp);
+    //   bw.write<32>(addr_code_len);
+    //   bw.write<32>(addr_block_len);
+    //   bw.write<4>(code_lines);
+    //   bw.write<1>(sparsified_ddr);
+    //   bw.write<1>(compress_ddr);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      addr_bmp = br.read<decltype(addr_bmp), 32>();
-      addr_code_len = br.read<decltype(addr_code_len), 32>();
-      addr_block_len = br.read<decltype(addr_block_len), 32>();
-      code_lines = br.read<decltype(code_lines), 4>();
-      sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
-      compress_ddr = br.read<decltype(compress_ddr), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   addr_bmp = br.read<decltype(addr_bmp), 32>();
+    //   addr_code_len = br.read<decltype(addr_code_len), 32>();
+    //   addr_block_len = br.read<decltype(addr_block_len), 32>();
+    //   code_lines = br.read<decltype(code_lines), 4>();
+    //   sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
+    //   compress_ddr = br.read<decltype(compress_ddr), 1>();
+    // }
   };
 
   /**
@@ -2235,21 +2027,21 @@ DDR，并且可能发生转置或者数据类型转换
     ADDR addr_code_len : 32;       /** 每一行编码之后的长度存放的地址 **/
     SPARSIFIED sparsified_ddr : 1; /** 是否稀疏 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<32>(addr_bmp);
-      bw.write<32>(addr_code_len);
-      bw.write<1>(sparsified_ddr);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<32>(addr_bmp);
+    //   bw.write<32>(addr_code_len);
+    //   bw.write<1>(sparsified_ddr);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      addr_bmp = br.read<decltype(addr_bmp), 32>();
-      addr_code_len = br.read<decltype(addr_code_len), 32>();
-      sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   addr_bmp = br.read<decltype(addr_bmp), 32>();
+    //   addr_code_len = br.read<decltype(addr_code_len), 32>();
+    //   sparsified_ddr = br.read<decltype(sparsified_ddr), 1>();
+    // }
   };
 
   /**
@@ -2269,21 +2061,21 @@ DDR，并且可能发生转置或者数据类型转换
     uint64_t psum_cascade : 1;      /** 是否为psum级联模式（用来加速1*1卷积计算） 0：否
                                 4个TCU 1：是 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<1>(broadcast_if);
-      bw.write<1>(broadcast_weight);
-      bw.write<1>(psum_cascade);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<1>(broadcast_if);
+    //   bw.write<1>(broadcast_weight);
+    //   bw.write<1>(psum_cascade);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      broadcast_if = br.read<decltype(broadcast_if), 1>();
-      broadcast_weight = br.read<decltype(broadcast_weight), 1>();
-      psum_cascade = br.read<decltype(psum_cascade), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   broadcast_if = br.read<decltype(broadcast_if), 1>();
+    //   broadcast_weight = br.read<decltype(broadcast_weight), 1>();
+    //   psum_cascade = br.read<decltype(psum_cascade), 1>();
+    // }
   };
 
   /**
@@ -2331,39 +2123,39 @@ padding 列数
                                 通道上有效 **/
     uint64_t mmu_item : 4;     /** 使用的内存映射方案 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<64>(stride_input_glb);
-      bw.write<16>(stride_w);
-      bw.write<16>(stride_h);
-      bw.write<8>(padding_top);
-      bw.write<8>(padding_bottom);
-      bw.write<8>(padding_left);
-      bw.write<8>(padding_right);
-      bw.write<5>(input_c_per_pu);
-      bw.write<8>(dilation_h);
-      bw.write<1>(transpose_if);
-      bw.write<4>(mmu_item);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<64>(stride_input_glb);
+    //   bw.write<16>(stride_w);
+    //   bw.write<16>(stride_h);
+    //   bw.write<8>(padding_top);
+    //   bw.write<8>(padding_bottom);
+    //   bw.write<8>(padding_left);
+    //   bw.write<8>(padding_right);
+    //   bw.write<5>(input_c_per_pu);
+    //   bw.write<8>(dilation_h);
+    //   bw.write<1>(transpose_if);
+    //   bw.write<4>(mmu_item);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      stride_input_glb = br.read<decltype(stride_input_glb), 64>();
-      stride_w = br.read<decltype(stride_w), 16>();
-      stride_h = br.read<decltype(stride_h), 16>();
-      padding_top = br.read<decltype(padding_top), 8>();
-      padding_bottom = br.read<decltype(padding_bottom), 8>();
-      padding_left = br.read<decltype(padding_left), 8>();
-      padding_right = br.read<decltype(padding_right), 8>();
-      input_c_per_pu = br.read<decltype(input_c_per_pu), 5>();
-      dilation_h = br.read<decltype(dilation_h), 8>();
-      transpose_if = br.read<decltype(transpose_if), 1>();
-      mmu_item = br.read<decltype(mmu_item), 4>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   stride_input_glb = br.read<decltype(stride_input_glb), 64>();
+    //   stride_w = br.read<decltype(stride_w), 16>();
+    //   stride_h = br.read<decltype(stride_h), 16>();
+    //   padding_top = br.read<decltype(padding_top), 8>();
+    //   padding_bottom = br.read<decltype(padding_bottom), 8>();
+    //   padding_left = br.read<decltype(padding_left), 8>();
+    //   padding_right = br.read<decltype(padding_right), 8>();
+    //   input_c_per_pu = br.read<decltype(input_c_per_pu), 5>();
+    //   dilation_h = br.read<decltype(dilation_h), 8>();
+    //   transpose_if = br.read<decltype(transpose_if), 1>();
+    //   mmu_item = br.read<decltype(mmu_item), 4>();
+    // }
   };
 
   /**
@@ -2390,29 +2182,29 @@ padding 列数
     uint64_t shape_input_h : 16; /** 当前计算输入Slice的形状信息 **/
     uint64_t shape_input_w : 16; /** 当前计算输入Slice的形状信息 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_if);
-      bw.write<4>(tcu_id);
-      bw.write<21>(addr_if);
-      bw.write<16>(shape_input_n);
-      bw.write<16>(shape_input_c);
-      bw.write<16>(shape_input_h);
-      bw.write<16>(shape_input_w);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_if);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<21>(addr_if);
+    //   bw.write<16>(shape_input_n);
+    //   bw.write<16>(shape_input_c);
+    //   bw.write<16>(shape_input_h);
+    //   bw.write<16>(shape_input_w);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_if = br.read<decltype(ccrclr_if), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      addr_if = br.read<decltype(addr_if), 21>();
-      shape_input_n = br.read<decltype(shape_input_n), 16>();
-      shape_input_c = br.read<decltype(shape_input_c), 16>();
-      shape_input_h = br.read<decltype(shape_input_h), 16>();
-      shape_input_w = br.read<decltype(shape_input_w), 16>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_if = br.read<decltype(ccrclr_if), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   addr_if = br.read<decltype(addr_if), 21>();
+    //   shape_input_n = br.read<decltype(shape_input_n), 16>();
+    //   shape_input_c = br.read<decltype(shape_input_c), 16>();
+    //   shape_input_h = br.read<decltype(shape_input_h), 16>();
+    //   shape_input_w = br.read<decltype(shape_input_w), 16>();
+    // }
   };
 
   /**
@@ -2432,21 +2224,21 @@ padding 列数
     uint64_t load_direction : 1; /** 是否对输入的 input featuremap
                                   进行转置，仅在HxW通道上有效 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<4>(mmu_item);
-      bw.write<1>(load_direction);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<4>(mmu_item);
+    //   bw.write<1>(load_direction);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      mmu_item = br.read<decltype(mmu_item), 4>();
-      load_direction = br.read<decltype(load_direction), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   mmu_item = br.read<decltype(mmu_item), 4>();
+    //   load_direction = br.read<decltype(load_direction), 1>();
+    // }
   };
 
   /**
@@ -2465,21 +2257,21 @@ padding 列数
     uint64_t tcu_id : 4;        /** TCU ID **/
     uint64_t addr_src : 21;     /** GLB 中 weights 的地址,byte的偏移地址 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_weight);
-      bw.write<4>(tcu_id);
-      bw.write<21>(addr_src);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_weight);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<21>(addr_src);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_weight = br.read<decltype(ccrclr_weight), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      addr_src = br.read<decltype(addr_src), 21>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_weight = br.read<decltype(ccrclr_weight), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   addr_src = br.read<decltype(addr_src), 21>();
+    // }
   };
 
   /**
@@ -2519,39 +2311,39 @@ padding 列数
     PRECISION output_precision : 2; /** None **/
     QUAN_SIGNED output_signed : 1;  /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<25>(addr_psum);
-      bw.write<25>(addr_dest);
-      bw.write<16>(shape_output_n);
-      bw.write<16>(shape_output_c);
-      bw.write<16>(shape_output_h);
-      bw.write<16>(shape_output_w);
-      bw.write<64>(stride_output_glb);
-      bw.write<64>(stride_psum_glb);
-      bw.write<4>(x_cut);
-      bw.write<2>(output_precision);
-      bw.write<1>(output_signed);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<25>(addr_psum);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<16>(shape_output_n);
+    //   bw.write<16>(shape_output_c);
+    //   bw.write<16>(shape_output_h);
+    //   bw.write<16>(shape_output_w);
+    //   bw.write<64>(stride_output_glb);
+    //   bw.write<64>(stride_psum_glb);
+    //   bw.write<4>(x_cut);
+    //   bw.write<2>(output_precision);
+    //   bw.write<1>(output_signed);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      addr_psum = br.read<decltype(addr_psum), 25>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      shape_output_n = br.read<decltype(shape_output_n), 16>();
-      shape_output_c = br.read<decltype(shape_output_c), 16>();
-      shape_output_h = br.read<decltype(shape_output_h), 16>();
-      shape_output_w = br.read<decltype(shape_output_w), 16>();
-      stride_output_glb = br.read<decltype(stride_output_glb), 64>();
-      stride_psum_glb = br.read<decltype(stride_psum_glb), 64>();
-      x_cut = br.read<decltype(x_cut), 4>();
-      output_precision = br.read<decltype(output_precision), 2>();
-      output_signed = br.read<decltype(output_signed), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   addr_psum = br.read<decltype(addr_psum), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   shape_output_n = br.read<decltype(shape_output_n), 16>();
+    //   shape_output_c = br.read<decltype(shape_output_c), 16>();
+    //   shape_output_h = br.read<decltype(shape_output_h), 16>();
+    //   shape_output_w = br.read<decltype(shape_output_w), 16>();
+    //   stride_output_glb = br.read<decltype(stride_output_glb), 64>();
+    //   stride_psum_glb = br.read<decltype(stride_psum_glb), 64>();
+    //   x_cut = br.read<decltype(x_cut), 4>();
+    //   output_precision = br.read<decltype(output_precision), 2>();
+    //   output_signed = br.read<decltype(output_signed), 1>();
+    // }
   };
 
   /**
@@ -2590,37 +2382,37 @@ padding 列数
 硬件内部信号=ceil(IF_c / input_channel_per_pu ) **/
     TCU_MODE mode : 2;       /** 指定PU的工作模式 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<5>(pe_w);
-      bw.write<5>(pe_h);
-      bw.write<5>(pe_last_w);
-      bw.write<5>(pe_last_h);
-      bw.write<8>(kernel_h);
-      bw.write<8>(kernel_w);
-      bw.write<5>(group);
-      bw.write<16>(pu_loop_w);
-      bw.write<16>(pu_loop_h);
-      bw.write<2>(mode);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<5>(pe_w);
+    //   bw.write<5>(pe_h);
+    //   bw.write<5>(pe_last_w);
+    //   bw.write<5>(pe_last_h);
+    //   bw.write<8>(kernel_h);
+    //   bw.write<8>(kernel_w);
+    //   bw.write<5>(group);
+    //   bw.write<16>(pu_loop_w);
+    //   bw.write<16>(pu_loop_h);
+    //   bw.write<2>(mode);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      pe_w = br.read<decltype(pe_w), 5>();
-      pe_h = br.read<decltype(pe_h), 5>();
-      pe_last_w = br.read<decltype(pe_last_w), 5>();
-      pe_last_h = br.read<decltype(pe_last_h), 5>();
-      kernel_h = br.read<decltype(kernel_h), 8>();
-      kernel_w = br.read<decltype(kernel_w), 8>();
-      group = br.read<decltype(group), 5>();
-      pu_loop_w = br.read<decltype(pu_loop_w), 16>();
-      pu_loop_h = br.read<decltype(pu_loop_h), 16>();
-      mode = br.read<decltype(mode), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   pe_w = br.read<decltype(pe_w), 5>();
+    //   pe_h = br.read<decltype(pe_h), 5>();
+    //   pe_last_w = br.read<decltype(pe_last_w), 5>();
+    //   pe_last_h = br.read<decltype(pe_last_h), 5>();
+    //   kernel_h = br.read<decltype(kernel_h), 8>();
+    //   kernel_w = br.read<decltype(kernel_w), 8>();
+    //   group = br.read<decltype(group), 5>();
+    //   pu_loop_w = br.read<decltype(pu_loop_w), 16>();
+    //   pu_loop_h = br.read<decltype(pu_loop_h), 16>();
+    //   mode = br.read<decltype(mode), 2>();
+    // }
   };
 
   /**
@@ -2645,23 +2437,23 @@ padding 列数
                               每个输出通道激活参数（分段点，两端的scale，bias，以及量化参数）
                               **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<16>(clamp_max);
-      bw.write<16>(clamp_min);
-      bw.write<25>(addr_act);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<16>(clamp_max);
+    //   bw.write<16>(clamp_min);
+    //   bw.write<25>(addr_act);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      clamp_max = br.read<decltype(clamp_max), 16>();
-      clamp_min = br.read<decltype(clamp_min), 16>();
-      addr_act = br.read<decltype(addr_act), 25>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   clamp_max = br.read<decltype(clamp_max), 16>();
+    //   clamp_min = br.read<decltype(clamp_min), 16>();
+    //   addr_act = br.read<decltype(addr_act), 25>();
+    // }
   };
 
   /**
@@ -2690,31 +2482,31 @@ padding 列数
     uint64_t load_psum : 1;        /** 是否从 GLB 加载中间结果 **/
     uint64_t weight_switching : 4; /** 是否切换 PU 的 weights **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_act);
-      bw.write<8>(ccrclr_psum);
-      bw.write<11>(ccrset);
-      bw.write<4>(tcu_id);
-      bw.write<1>(act_enable);
-      bw.write<1>(of_enable);
-      bw.write<1>(load_psum);
-      bw.write<4>(weight_switching);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_act);
+    //   bw.write<8>(ccrclr_psum);
+    //   bw.write<11>(ccrset);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<1>(act_enable);
+    //   bw.write<1>(of_enable);
+    //   bw.write<1>(load_psum);
+    //   bw.write<4>(weight_switching);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_act = br.read<decltype(ccrclr_act), 8>();
-      ccrclr_psum = br.read<decltype(ccrclr_psum), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      act_enable = br.read<decltype(act_enable), 1>();
-      of_enable = br.read<decltype(of_enable), 1>();
-      load_psum = br.read<decltype(load_psum), 1>();
-      weight_switching = br.read<decltype(weight_switching), 4>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_act = br.read<decltype(ccrclr_act), 8>();
+    //   ccrclr_psum = br.read<decltype(ccrclr_psum), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   act_enable = br.read<decltype(act_enable), 1>();
+    //   of_enable = br.read<decltype(of_enable), 1>();
+    //   load_psum = br.read<decltype(load_psum), 1>();
+    //   weight_switching = br.read<decltype(weight_switching), 4>();
+    // }
   };
 
   /**
@@ -2732,21 +2524,21 @@ padding 列数
     uint64_t stride_src1_glb : 64; /** None **/
     uint64_t stride_src2_glb : 64; /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<64>(stride_src1_glb);
-      bw.write<64>(stride_src2_glb);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<64>(stride_src1_glb);
+    //   bw.write<64>(stride_src2_glb);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      stride_src1_glb = br.read<decltype(stride_src1_glb), 64>();
-      stride_src2_glb = br.read<decltype(stride_src2_glb), 64>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   stride_src1_glb = br.read<decltype(stride_src1_glb), 64>();
+    //   stride_src2_glb = br.read<decltype(stride_src2_glb), 64>();
+    // }
   };
 
   /**
@@ -2780,37 +2572,37 @@ padding 列数
     PRECISION output_precision : 2; /** None **/
     QUAN_SIGNED output_signed : 1;  /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<4>(tcu_id);
-      bw.write<64>(stride_psum_glb);
-      bw.write<25>(addr_psum);
-      bw.write<25>(addr_dest);
-      bw.write<64>(stride_dest_glb);
-      bw.write<16>(shape_dest_n);
-      bw.write<16>(shape_dest_h);
-      bw.write<16>(shape_dest_w);
-      bw.write<16>(shape_src1_w);
-      bw.write<2>(output_precision);
-      bw.write<1>(output_signed);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<64>(stride_psum_glb);
+    //   bw.write<25>(addr_psum);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<64>(stride_dest_glb);
+    //   bw.write<16>(shape_dest_n);
+    //   bw.write<16>(shape_dest_h);
+    //   bw.write<16>(shape_dest_w);
+    //   bw.write<16>(shape_src1_w);
+    //   bw.write<2>(output_precision);
+    //   bw.write<1>(output_signed);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      stride_psum_glb = br.read<decltype(stride_psum_glb), 64>();
-      addr_psum = br.read<decltype(addr_psum), 25>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
-      shape_dest_n = br.read<decltype(shape_dest_n), 16>();
-      shape_dest_h = br.read<decltype(shape_dest_h), 16>();
-      shape_dest_w = br.read<decltype(shape_dest_w), 16>();
-      shape_src1_w = br.read<decltype(shape_src1_w), 16>();
-      output_precision = br.read<decltype(output_precision), 2>();
-      output_signed = br.read<decltype(output_signed), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   stride_psum_glb = br.read<decltype(stride_psum_glb), 64>();
+    //   addr_psum = br.read<decltype(addr_psum), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
+    //   shape_dest_n = br.read<decltype(shape_dest_n), 16>();
+    //   shape_dest_h = br.read<decltype(shape_dest_h), 16>();
+    //   shape_dest_w = br.read<decltype(shape_dest_w), 16>();
+    //   shape_src1_w = br.read<decltype(shape_src1_w), 16>();
+    //   output_precision = br.read<decltype(output_precision), 2>();
+    //   output_signed = br.read<decltype(output_signed), 1>();
+    // }
   };
 
   /**
@@ -2828,21 +2620,21 @@ padding 列数
     uint64_t tcu_id : 4;      /** None **/
     uint64_t addr_src1 : 25;  /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_src1);
-      bw.write<4>(tcu_id);
-      bw.write<25>(addr_src1);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_src1);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<25>(addr_src1);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_src1 = br.read<decltype(ccrclr_src1), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      addr_src1 = br.read<decltype(addr_src1), 25>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_src1 = br.read<decltype(ccrclr_src1), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   addr_src1 = br.read<decltype(addr_src1), 25>();
+    // }
   };
 
   /**
@@ -2860,21 +2652,21 @@ padding 列数
     uint64_t tcu_id : 4;      /** None **/
     uint64_t addr_src2 : 25;  /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_src2);
-      bw.write<4>(tcu_id);
-      bw.write<25>(addr_src2);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_src2);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<25>(addr_src2);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_src2 = br.read<decltype(ccrclr_src2), 8>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      addr_src2 = br.read<decltype(addr_src2), 25>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_src2 = br.read<decltype(ccrclr_src2), 8>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   addr_src2 = br.read<decltype(addr_src2), 25>();
+    // }
   };
 
   /**
@@ -2897,25 +2689,25 @@ padding 列数
     uint64_t
         act_enable : 1; /** 是否在这次计算完之后将结果做一次两段拟合的激活函数 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_act);
-      bw.write<8>(ccrclr_psum);
-      bw.write<11>(ccrset);
-      bw.write<4>(tcu_id);
-      bw.write<1>(act_enable);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_act);
+    //   bw.write<8>(ccrclr_psum);
+    //   bw.write<11>(ccrset);
+    //   bw.write<4>(tcu_id);
+    //   bw.write<1>(act_enable);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_act = br.read<decltype(ccrclr_act), 8>();
-      ccrclr_psum = br.read<decltype(ccrclr_psum), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      tcu_id = br.read<decltype(tcu_id), 4>();
-      act_enable = br.read<decltype(act_enable), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_act = br.read<decltype(ccrclr_act), 8>();
+    //   ccrclr_psum = br.read<decltype(ccrclr_psum), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   tcu_id = br.read<decltype(tcu_id), 4>();
+    //   act_enable = br.read<decltype(act_enable), 1>();
+    // }
   };
 
   /**
@@ -2951,39 +2743,39 @@ padding 列数
     uint64_t basement_src1 : 2;      /** None **/
     uint64_t basement_dest : 2;      /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src);
-      bw.write<32>(addr_dest);
-      bw.write<64>(stride_input_glb);
-      bw.write<64>(stride_output_glb);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<2>(basement_src1);
-      bw.write<2>(basement_dest);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<64>(stride_input_glb);
+    //   bw.write<64>(stride_output_glb);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<2>(basement_src1);
+    //   bw.write<2>(basement_dest);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 32>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      stride_input_glb = br.read<decltype(stride_input_glb), 64>();
-      stride_output_glb = br.read<decltype(stride_output_glb), 64>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      basement_src1 = br.read<decltype(basement_src1), 2>();
-      basement_dest = br.read<decltype(basement_dest), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   stride_input_glb = br.read<decltype(stride_input_glb), 64>();
+    //   stride_output_glb = br.read<decltype(stride_output_glb), 64>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   basement_src1 = br.read<decltype(basement_src1), 2>();
+    //   basement_dest = br.read<decltype(basement_dest), 2>();
+    // }
   };
 
   /**
@@ -3009,29 +2801,29 @@ padding 列数
     uint64_t basement_src : 2;  /** None **/
     uint64_t basement_dest : 2; /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src);
-      bw.write<32>(addr_dest);
-      bw.write<32>(length);
-      bw.write<2>(basement_src);
-      bw.write<2>(basement_dest);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<32>(length);
+    //   bw.write<2>(basement_src);
+    //   bw.write<2>(basement_dest);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 32>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      length = br.read<decltype(length), 32>();
-      basement_src = br.read<decltype(basement_src), 2>();
-      basement_dest = br.read<decltype(basement_dest), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   length = br.read<decltype(length), 32>();
+    //   basement_src = br.read<decltype(basement_src), 2>();
+    //   basement_dest = br.read<decltype(basement_dest), 2>();
+    // }
   };
 
   /**
@@ -3075,43 +2867,43 @@ init_value
     uint64_t basement_src : 2;      /** 是否是栈变量 **/
     uint64_t basement_dest : 2;     /** 是否是栈变量 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src);
-      bw.write<32>(addr_dest);
-      bw.write<16>(init_value);
-      bw.write<64>(stride_input_glb);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<3>(op);
-      bw.write<2>(dimension);
-      bw.write<2>(basement_src);
-      bw.write<2>(basement_dest);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<16>(init_value);
+    //   bw.write<64>(stride_input_glb);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<3>(op);
+    //   bw.write<2>(dimension);
+    //   bw.write<2>(basement_src);
+    //   bw.write<2>(basement_dest);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 32>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      init_value = br.read<decltype(init_value), 16>();
-      stride_input_glb = br.read<decltype(stride_input_glb), 64>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      op = br.read<decltype(op), 3>();
-      dimension = br.read<decltype(dimension), 2>();
-      basement_src = br.read<decltype(basement_src), 2>();
-      basement_dest = br.read<decltype(basement_dest), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   init_value = br.read<decltype(init_value), 16>();
+    //   stride_input_glb = br.read<decltype(stride_input_glb), 64>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   op = br.read<decltype(op), 3>();
+    //   dimension = br.read<decltype(dimension), 2>();
+    //   basement_src = br.read<decltype(basement_src), 2>();
+    //   basement_dest = br.read<decltype(basement_dest), 2>();
+    // }
   };
 
   /**
@@ -3147,35 +2939,35 @@ init_value
     uint64_t basement_src : 2;   /** 是否是栈变量 **/
     uint64_t basement_dest : 2;  /** 是否是栈变量 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src);
-      bw.write<32>(addr_dest);
-      bw.write<16>(init_value);
-      bw.write<32>(length);
-      bw.write<16>(reduce_length);
-      bw.write<3>(op);
-      bw.write<2>(basement_src);
-      bw.write<2>(basement_dest);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<16>(init_value);
+    //   bw.write<32>(length);
+    //   bw.write<16>(reduce_length);
+    //   bw.write<3>(op);
+    //   bw.write<2>(basement_src);
+    //   bw.write<2>(basement_dest);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 32>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      init_value = br.read<decltype(init_value), 16>();
-      length = br.read<decltype(length), 32>();
-      reduce_length = br.read<decltype(reduce_length), 16>();
-      op = br.read<decltype(op), 3>();
-      basement_src = br.read<decltype(basement_src), 2>();
-      basement_dest = br.read<decltype(basement_dest), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   init_value = br.read<decltype(init_value), 16>();
+    //   length = br.read<decltype(length), 32>();
+    //   reduce_length = br.read<decltype(reduce_length), 16>();
+    //   op = br.read<decltype(op), 3>();
+    //   basement_src = br.read<decltype(basement_src), 2>();
+    //   basement_dest = br.read<decltype(basement_dest), 2>();
+    // }
   };
 
   /**
@@ -3214,39 +3006,39 @@ init_value
     uint64_t basement_src2 : 2; /** None **/
     uint64_t basement_dest : 2; /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr_src1);
-      bw.write<8>(ccrclr_src2);
-      bw.write<11>(ccrset);
-      bw.write<32>(addr_src1);
-      bw.write<32>(addr_src2);
-      bw.write<32>(addr_dest);
-      bw.write<32>(len_src1);
-      bw.write<32>(len_src2);
-      bw.write<32>(len_dest);
-      bw.write<2>(basement_src1);
-      bw.write<2>(basement_src2);
-      bw.write<2>(basement_dest);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr_src1);
+    //   bw.write<8>(ccrclr_src2);
+    //   bw.write<11>(ccrset);
+    //   bw.write<32>(addr_src1);
+    //   bw.write<32>(addr_src2);
+    //   bw.write<32>(addr_dest);
+    //   bw.write<32>(len_src1);
+    //   bw.write<32>(len_src2);
+    //   bw.write<32>(len_dest);
+    //   bw.write<2>(basement_src1);
+    //   bw.write<2>(basement_src2);
+    //   bw.write<2>(basement_dest);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr_src1 = br.read<decltype(ccrclr_src1), 8>();
-      ccrclr_src2 = br.read<decltype(ccrclr_src2), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src1 = br.read<decltype(addr_src1), 32>();
-      addr_src2 = br.read<decltype(addr_src2), 32>();
-      addr_dest = br.read<decltype(addr_dest), 32>();
-      len_src1 = br.read<decltype(len_src1), 32>();
-      len_src2 = br.read<decltype(len_src2), 32>();
-      len_dest = br.read<decltype(len_dest), 32>();
-      basement_src1 = br.read<decltype(basement_src1), 2>();
-      basement_src2 = br.read<decltype(basement_src2), 2>();
-      basement_dest = br.read<decltype(basement_dest), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr_src1 = br.read<decltype(ccrclr_src1), 8>();
+    //   ccrclr_src2 = br.read<decltype(ccrclr_src2), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src1 = br.read<decltype(addr_src1), 32>();
+    //   addr_src2 = br.read<decltype(addr_src2), 32>();
+    //   addr_dest = br.read<decltype(addr_dest), 32>();
+    //   len_src1 = br.read<decltype(len_src1), 32>();
+    //   len_src2 = br.read<decltype(len_src2), 32>();
+    //   len_dest = br.read<decltype(len_dest), 32>();
+    //   basement_src1 = br.read<decltype(basement_src1), 2>();
+    //   basement_src2 = br.read<decltype(basement_src2), 2>();
+    //   basement_dest = br.read<decltype(basement_dest), 2>();
+    // }
   };
 
   /**
@@ -3268,23 +3060,23 @@ init_value
     uint64_t length : 29;        /** reduce元素的次数 **/
     MFU_REDUCE_OP op : 3;        /** 参与的运算 Scalar Binary Operator **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<16>(init_value);
-      bw.write<16>(recude_length);
-      bw.write<29>(length);
-      bw.write<3>(op);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<16>(init_value);
+    //   bw.write<16>(recude_length);
+    //   bw.write<29>(length);
+    //   bw.write<3>(op);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      init_value = br.read<decltype(init_value), 16>();
-      recude_length = br.read<decltype(recude_length), 16>();
-      length = br.read<decltype(length), 29>();
-      op = br.read<decltype(op), 3>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   init_value = br.read<decltype(init_value), 16>();
+    //   recude_length = br.read<decltype(recude_length), 16>();
+    //   length = br.read<decltype(length), 29>();
+    //   op = br.read<decltype(op), 3>();
+    // }
   };
 
   /**
@@ -3374,89 +3166,89 @@ init_value
     MFU_MN_PORTOUT out36 : 6; /** SELECT0_OUT_0连接的端口 **/
     MFU_MN_PORTOUT out37 : 6; /** SELECT1_OUT_0连接的端口 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<6>(out1);
-      bw.write<6>(out2);
-      bw.write<6>(out3);
-      bw.write<6>(out4);
-      bw.write<6>(out5);
-      bw.write<6>(out6);
-      bw.write<6>(out7);
-      bw.write<6>(out8);
-      bw.write<6>(out9);
-      bw.write<6>(out10);
-      bw.write<6>(out11);
-      bw.write<6>(out12);
-      bw.write<6>(out13);
-      bw.write<6>(out14);
-      bw.write<6>(out15);
-      bw.write<6>(out16);
-      bw.write<6>(out17);
-      bw.write<6>(out18);
-      bw.write<6>(out19);
-      bw.write<6>(out20);
-      bw.write<6>(out21);
-      bw.write<6>(out22);
-      bw.write<6>(out23);
-      bw.write<6>(out24);
-      bw.write<6>(out25);
-      bw.write<6>(out26);
-      bw.write<6>(out27);
-      bw.write<6>(out28);
-      bw.write<6>(out29);
-      bw.write<6>(out30);
-      bw.write<6>(out31);
-      bw.write<6>(out32);
-      bw.write<6>(out33);
-      bw.write<6>(out34);
-      bw.write<6>(out35);
-      bw.write<6>(out36);
-      bw.write<6>(out37);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<6>(out1);
+    //   bw.write<6>(out2);
+    //   bw.write<6>(out3);
+    //   bw.write<6>(out4);
+    //   bw.write<6>(out5);
+    //   bw.write<6>(out6);
+    //   bw.write<6>(out7);
+    //   bw.write<6>(out8);
+    //   bw.write<6>(out9);
+    //   bw.write<6>(out10);
+    //   bw.write<6>(out11);
+    //   bw.write<6>(out12);
+    //   bw.write<6>(out13);
+    //   bw.write<6>(out14);
+    //   bw.write<6>(out15);
+    //   bw.write<6>(out16);
+    //   bw.write<6>(out17);
+    //   bw.write<6>(out18);
+    //   bw.write<6>(out19);
+    //   bw.write<6>(out20);
+    //   bw.write<6>(out21);
+    //   bw.write<6>(out22);
+    //   bw.write<6>(out23);
+    //   bw.write<6>(out24);
+    //   bw.write<6>(out25);
+    //   bw.write<6>(out26);
+    //   bw.write<6>(out27);
+    //   bw.write<6>(out28);
+    //   bw.write<6>(out29);
+    //   bw.write<6>(out30);
+    //   bw.write<6>(out31);
+    //   bw.write<6>(out32);
+    //   bw.write<6>(out33);
+    //   bw.write<6>(out34);
+    //   bw.write<6>(out35);
+    //   bw.write<6>(out36);
+    //   bw.write<6>(out37);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      out1 = br.read<decltype(out1), 6>();
-      out2 = br.read<decltype(out2), 6>();
-      out3 = br.read<decltype(out3), 6>();
-      out4 = br.read<decltype(out4), 6>();
-      out5 = br.read<decltype(out5), 6>();
-      out6 = br.read<decltype(out6), 6>();
-      out7 = br.read<decltype(out7), 6>();
-      out8 = br.read<decltype(out8), 6>();
-      out9 = br.read<decltype(out9), 6>();
-      out10 = br.read<decltype(out10), 6>();
-      out11 = br.read<decltype(out11), 6>();
-      out12 = br.read<decltype(out12), 6>();
-      out13 = br.read<decltype(out13), 6>();
-      out14 = br.read<decltype(out14), 6>();
-      out15 = br.read<decltype(out15), 6>();
-      out16 = br.read<decltype(out16), 6>();
-      out17 = br.read<decltype(out17), 6>();
-      out18 = br.read<decltype(out18), 6>();
-      out19 = br.read<decltype(out19), 6>();
-      out20 = br.read<decltype(out20), 6>();
-      out21 = br.read<decltype(out21), 6>();
-      out22 = br.read<decltype(out22), 6>();
-      out23 = br.read<decltype(out23), 6>();
-      out24 = br.read<decltype(out24), 6>();
-      out25 = br.read<decltype(out25), 6>();
-      out26 = br.read<decltype(out26), 6>();
-      out27 = br.read<decltype(out27), 6>();
-      out28 = br.read<decltype(out28), 6>();
-      out29 = br.read<decltype(out29), 6>();
-      out30 = br.read<decltype(out30), 6>();
-      out31 = br.read<decltype(out31), 6>();
-      out32 = br.read<decltype(out32), 6>();
-      out33 = br.read<decltype(out33), 6>();
-      out34 = br.read<decltype(out34), 6>();
-      out35 = br.read<decltype(out35), 6>();
-      out36 = br.read<decltype(out36), 6>();
-      out37 = br.read<decltype(out37), 6>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   out1 = br.read<decltype(out1), 6>();
+    //   out2 = br.read<decltype(out2), 6>();
+    //   out3 = br.read<decltype(out3), 6>();
+    //   out4 = br.read<decltype(out4), 6>();
+    //   out5 = br.read<decltype(out5), 6>();
+    //   out6 = br.read<decltype(out6), 6>();
+    //   out7 = br.read<decltype(out7), 6>();
+    //   out8 = br.read<decltype(out8), 6>();
+    //   out9 = br.read<decltype(out9), 6>();
+    //   out10 = br.read<decltype(out10), 6>();
+    //   out11 = br.read<decltype(out11), 6>();
+    //   out12 = br.read<decltype(out12), 6>();
+    //   out13 = br.read<decltype(out13), 6>();
+    //   out14 = br.read<decltype(out14), 6>();
+    //   out15 = br.read<decltype(out15), 6>();
+    //   out16 = br.read<decltype(out16), 6>();
+    //   out17 = br.read<decltype(out17), 6>();
+    //   out18 = br.read<decltype(out18), 6>();
+    //   out19 = br.read<decltype(out19), 6>();
+    //   out20 = br.read<decltype(out20), 6>();
+    //   out21 = br.read<decltype(out21), 6>();
+    //   out22 = br.read<decltype(out22), 6>();
+    //   out23 = br.read<decltype(out23), 6>();
+    //   out24 = br.read<decltype(out24), 6>();
+    //   out25 = br.read<decltype(out25), 6>();
+    //   out26 = br.read<decltype(out26), 6>();
+    //   out27 = br.read<decltype(out27), 6>();
+    //   out28 = br.read<decltype(out28), 6>();
+    //   out29 = br.read<decltype(out29), 6>();
+    //   out30 = br.read<decltype(out30), 6>();
+    //   out31 = br.read<decltype(out31), 6>();
+    //   out32 = br.read<decltype(out32), 6>();
+    //   out33 = br.read<decltype(out33), 6>();
+    //   out34 = br.read<decltype(out34), 6>();
+    //   out35 = br.read<decltype(out35), 6>();
+    //   out36 = br.read<decltype(out36), 6>();
+    //   out37 = br.read<decltype(out37), 6>();
+    // }
   };
 
   /**
@@ -3482,19 +3274,19 @@ init_value
 2：配置拟合模块1的参数地址 **/
     uint64_t val : 32; /** 配置 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<2>(mode);
-      bw.write<32>(val);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<2>(mode);
+    //   bw.write<32>(val);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      mode = br.read<decltype(mode), 2>();
-      val = br.read<decltype(val), 32>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   mode = br.read<decltype(mode), 2>();
+    //   val = br.read<decltype(val), 32>();
+    // }
   };
 
   /**
@@ -3512,19 +3304,19 @@ init_value
                                      上同时进行一样窗口和窗口移动规则。 **/
     uint64_t stride_dest_glb : 64;  /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(multiple_channels);
-      bw.write<64>(stride_dest_glb);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(multiple_channels);
+    //   bw.write<64>(stride_dest_glb);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      multiple_channels = br.read<decltype(multiple_channels), 8>();
-      stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   multiple_channels = br.read<decltype(multiple_channels), 8>();
+    //   stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
+    // }
   };
 
   /**
@@ -3538,17 +3330,17 @@ init_value
     OPCODE opcode : 8;        /**  主要用来配置待操作的 Tensor 的位置 **/
     uint64_t stride_glb : 64; /** Tensor 的 shape **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<64>(stride_glb);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<64>(stride_glb);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      stride_glb = br.read<decltype(stride_glb), 64>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   stride_glb = br.read<decltype(stride_glb), 64>();
+    // }
   };
 
   /**
@@ -3607,59 +3399,59 @@ DDR)（slice起始地址）
                                  三种 **/
     uint64_t quantized : 1;      /** 是否是量化计算 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<25>(addr_src);
-      bw.write<25>(addr_dest);
-      bw.write<5>(window_w);
-      bw.write<5>(window_h);
-      bw.write<5>(active_h);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<16>(count_w);
-      bw.write<16>(count_h);
-      bw.write<8>(stride_w);
-      bw.write<8>(stride_h);
-      bw.write<8>(padding_top);
-      bw.write<8>(padding_bottom);
-      bw.write<8>(padding_left);
-      bw.write<8>(padding_right);
-      bw.write<8>(pe_last_h);
-      bw.write<2>(computation);
-      bw.write<1>(quantized);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<25>(addr_src);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<5>(window_w);
+    //   bw.write<5>(window_h);
+    //   bw.write<5>(active_h);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<16>(count_w);
+    //   bw.write<16>(count_h);
+    //   bw.write<8>(stride_w);
+    //   bw.write<8>(stride_h);
+    //   bw.write<8>(padding_top);
+    //   bw.write<8>(padding_bottom);
+    //   bw.write<8>(padding_left);
+    //   bw.write<8>(padding_right);
+    //   bw.write<8>(pe_last_h);
+    //   bw.write<2>(computation);
+    //   bw.write<1>(quantized);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 25>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      window_w = br.read<decltype(window_w), 5>();
-      window_h = br.read<decltype(window_h), 5>();
-      active_h = br.read<decltype(active_h), 5>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      count_w = br.read<decltype(count_w), 16>();
-      count_h = br.read<decltype(count_h), 16>();
-      stride_w = br.read<decltype(stride_w), 8>();
-      stride_h = br.read<decltype(stride_h), 8>();
-      padding_top = br.read<decltype(padding_top), 8>();
-      padding_bottom = br.read<decltype(padding_bottom), 8>();
-      padding_left = br.read<decltype(padding_left), 8>();
-      padding_right = br.read<decltype(padding_right), 8>();
-      pe_last_h = br.read<decltype(pe_last_h), 8>();
-      computation = br.read<decltype(computation), 2>();
-      quantized = br.read<decltype(quantized), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   window_w = br.read<decltype(window_w), 5>();
+    //   window_h = br.read<decltype(window_h), 5>();
+    //   active_h = br.read<decltype(active_h), 5>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   count_w = br.read<decltype(count_w), 16>();
+    //   count_h = br.read<decltype(count_h), 16>();
+    //   stride_w = br.read<decltype(stride_w), 8>();
+    //   stride_h = br.read<decltype(stride_h), 8>();
+    //   padding_top = br.read<decltype(padding_top), 8>();
+    //   padding_bottom = br.read<decltype(padding_bottom), 8>();
+    //   padding_left = br.read<decltype(padding_left), 8>();
+    //   padding_right = br.read<decltype(padding_right), 8>();
+    //   pe_last_h = br.read<decltype(pe_last_h), 8>();
+    //   computation = br.read<decltype(computation), 2>();
+    //   quantized = br.read<decltype(quantized), 1>();
+    // }
   };
 
   /**
@@ -3713,55 +3505,55 @@ DDR)（slice起始地址）
     uint64_t const3 : 16;          /** 常量3 **/
     uint64_t const4 : 16;          /** 常量4 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<16>(slice_src1);
-      bw.write<16>(slice_src2);
-      bw.write<16>(repeats_src1);
-      bw.write<16>(repeats_src2);
-      bw.write<16>(slice_repeats_src1);
-      bw.write<16>(slice_repeats_src2);
-      bw.write<64>(stride_src1_glb);
-      bw.write<16>(shape_src1_n);
-      bw.write<16>(shape_src1_c);
-      bw.write<16>(shape_src1_h);
-      bw.write<16>(shape_src1_w);
-      bw.write<64>(stride_src2_glb);
-      bw.write<16>(shape_src2_n);
-      bw.write<16>(shape_src2_c);
-      bw.write<16>(shape_src2_h);
-      bw.write<16>(shape_src2_w);
-      bw.write<16>(const1);
-      bw.write<16>(const2);
-      bw.write<16>(const3);
-      bw.write<16>(const4);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<16>(slice_src1);
+    //   bw.write<16>(slice_src2);
+    //   bw.write<16>(repeats_src1);
+    //   bw.write<16>(repeats_src2);
+    //   bw.write<16>(slice_repeats_src1);
+    //   bw.write<16>(slice_repeats_src2);
+    //   bw.write<64>(stride_src1_glb);
+    //   bw.write<16>(shape_src1_n);
+    //   bw.write<16>(shape_src1_c);
+    //   bw.write<16>(shape_src1_h);
+    //   bw.write<16>(shape_src1_w);
+    //   bw.write<64>(stride_src2_glb);
+    //   bw.write<16>(shape_src2_n);
+    //   bw.write<16>(shape_src2_c);
+    //   bw.write<16>(shape_src2_h);
+    //   bw.write<16>(shape_src2_w);
+    //   bw.write<16>(const1);
+    //   bw.write<16>(const2);
+    //   bw.write<16>(const3);
+    //   bw.write<16>(const4);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      slice_src1 = br.read<decltype(slice_src1), 16>();
-      slice_src2 = br.read<decltype(slice_src2), 16>();
-      repeats_src1 = br.read<decltype(repeats_src1), 16>();
-      repeats_src2 = br.read<decltype(repeats_src2), 16>();
-      slice_repeats_src1 = br.read<decltype(slice_repeats_src1), 16>();
-      slice_repeats_src2 = br.read<decltype(slice_repeats_src2), 16>();
-      stride_src1_glb = br.read<decltype(stride_src1_glb), 64>();
-      shape_src1_n = br.read<decltype(shape_src1_n), 16>();
-      shape_src1_c = br.read<decltype(shape_src1_c), 16>();
-      shape_src1_h = br.read<decltype(shape_src1_h), 16>();
-      shape_src1_w = br.read<decltype(shape_src1_w), 16>();
-      stride_src2_glb = br.read<decltype(stride_src2_glb), 64>();
-      shape_src2_n = br.read<decltype(shape_src2_n), 16>();
-      shape_src2_c = br.read<decltype(shape_src2_c), 16>();
-      shape_src2_h = br.read<decltype(shape_src2_h), 16>();
-      shape_src2_w = br.read<decltype(shape_src2_w), 16>();
-      const1 = br.read<decltype(const1), 16>();
-      const2 = br.read<decltype(const2), 16>();
-      const3 = br.read<decltype(const3), 16>();
-      const4 = br.read<decltype(const4), 16>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   slice_src1 = br.read<decltype(slice_src1), 16>();
+    //   slice_src2 = br.read<decltype(slice_src2), 16>();
+    //   repeats_src1 = br.read<decltype(repeats_src1), 16>();
+    //   repeats_src2 = br.read<decltype(repeats_src2), 16>();
+    //   slice_repeats_src1 = br.read<decltype(slice_repeats_src1), 16>();
+    //   slice_repeats_src2 = br.read<decltype(slice_repeats_src2), 16>();
+    //   stride_src1_glb = br.read<decltype(stride_src1_glb), 64>();
+    //   shape_src1_n = br.read<decltype(shape_src1_n), 16>();
+    //   shape_src1_c = br.read<decltype(shape_src1_c), 16>();
+    //   shape_src1_h = br.read<decltype(shape_src1_h), 16>();
+    //   shape_src1_w = br.read<decltype(shape_src1_w), 16>();
+    //   stride_src2_glb = br.read<decltype(stride_src2_glb), 64>();
+    //   shape_src2_n = br.read<decltype(shape_src2_n), 16>();
+    //   shape_src2_c = br.read<decltype(shape_src2_c), 16>();
+    //   shape_src2_h = br.read<decltype(shape_src2_h), 16>();
+    //   shape_src2_w = br.read<decltype(shape_src2_w), 16>();
+    //   const1 = br.read<decltype(const1), 16>();
+    //   const2 = br.read<decltype(const2), 16>();
+    //   const3 = br.read<decltype(const3), 16>();
+    //   const4 = br.read<decltype(const4), 16>();
+    // }
   };
 
   /**
@@ -3809,51 +3601,51 @@ DDR)（slice起始地址）
     MFU_CROP_ALIGN align_method : 2;   /** None **/
     MFU_CROP_RESIZE resize_method : 1; /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<25>(addr_src);
-      bw.write<25>(addr_dest);
-      bw.write<25>(addr_bbox);
-      bw.write<16>(reserve);
-      bw.write<16>(shape_src_c);
-      bw.write<16>(shape_src_h);
-      bw.write<16>(shape_src_w);
-      bw.write<64>(stride_src_glb);
-      bw.write<64>(stride_dest_glb);
-      bw.write<16>(roi_amount);
-      bw.write<16>(dest_h);
-      bw.write<16>(dest_w);
-      bw.write<24>(step_h);
-      bw.write<24>(step_w);
-      bw.write<2>(align_method);
-      bw.write<1>(resize_method);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<25>(addr_src);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<25>(addr_bbox);
+    //   bw.write<16>(reserve);
+    //   bw.write<16>(shape_src_c);
+    //   bw.write<16>(shape_src_h);
+    //   bw.write<16>(shape_src_w);
+    //   bw.write<64>(stride_src_glb);
+    //   bw.write<64>(stride_dest_glb);
+    //   bw.write<16>(roi_amount);
+    //   bw.write<16>(dest_h);
+    //   bw.write<16>(dest_w);
+    //   bw.write<24>(step_h);
+    //   bw.write<24>(step_w);
+    //   bw.write<2>(align_method);
+    //   bw.write<1>(resize_method);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 25>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      addr_bbox = br.read<decltype(addr_bbox), 25>();
-      reserve = br.read<decltype(reserve), 16>();
-      shape_src_c = br.read<decltype(shape_src_c), 16>();
-      shape_src_h = br.read<decltype(shape_src_h), 16>();
-      shape_src_w = br.read<decltype(shape_src_w), 16>();
-      stride_src_glb = br.read<decltype(stride_src_glb), 64>();
-      stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
-      roi_amount = br.read<decltype(roi_amount), 16>();
-      dest_h = br.read<decltype(dest_h), 16>();
-      dest_w = br.read<decltype(dest_w), 16>();
-      step_h = br.read<decltype(step_h), 24>();
-      step_w = br.read<decltype(step_w), 24>();
-      align_method = br.read<decltype(align_method), 2>();
-      resize_method = br.read<decltype(resize_method), 1>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   addr_bbox = br.read<decltype(addr_bbox), 25>();
+    //   reserve = br.read<decltype(reserve), 16>();
+    //   shape_src_c = br.read<decltype(shape_src_c), 16>();
+    //   shape_src_h = br.read<decltype(shape_src_h), 16>();
+    //   shape_src_w = br.read<decltype(shape_src_w), 16>();
+    //   stride_src_glb = br.read<decltype(stride_src_glb), 64>();
+    //   stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
+    //   roi_amount = br.read<decltype(roi_amount), 16>();
+    //   dest_h = br.read<decltype(dest_h), 16>();
+    //   dest_w = br.read<decltype(dest_w), 16>();
+    //   step_h = br.read<decltype(step_h), 24>();
+    //   step_w = br.read<decltype(step_w), 24>();
+    //   align_method = br.read<decltype(align_method), 2>();
+    //   resize_method = br.read<decltype(resize_method), 1>();
+    // }
   };
 
   /**
@@ -3873,23 +3665,23 @@ DDR)（slice起始地址）
     uint64_t imm : 16;       /** None **/
     uint64_t len : 20;       /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<11>(ccrset);
-      bw.write<25>(addr_dest);
-      bw.write<16>(imm);
-      bw.write<20>(len);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<11>(ccrset);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<16>(imm);
+    //   bw.write<20>(len);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      imm = br.read<decltype(imm), 16>();
-      len = br.read<decltype(len), 20>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   imm = br.read<decltype(imm), 16>();
+    //   len = br.read<decltype(len), 20>();
+    // }
   };
 
   /**
@@ -3923,37 +3715,37 @@ DDR)（slice起始地址）
     uint64_t shape_w : 16;         /** None **/
     PRECISION precision_glb : 2;   /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<25>(addr_src);
-      bw.write<25>(addr_dest);
-      bw.write<64>(stride_src_glb);
-      bw.write<64>(stride_dest_glb);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<2>(precision_glb);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<25>(addr_src);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<64>(stride_src_glb);
+    //   bw.write<64>(stride_dest_glb);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<2>(precision_glb);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 25>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      stride_src_glb = br.read<decltype(stride_src_glb), 64>();
-      stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      precision_glb = br.read<decltype(precision_glb), 2>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   stride_src_glb = br.read<decltype(stride_src_glb), 64>();
+    //   stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   precision_glb = br.read<decltype(precision_glb), 2>();
+    // }
   };
 
   /**
@@ -3989,39 +3781,39 @@ DDR)（slice起始地址）
     PRECISION precision_glb : 2;   /** None **/
     MFU_TRANS_PERMUTE permute : 5; /** None **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<8>(ccrclr);
-      bw.write<11>(ccrset);
-      bw.write<25>(addr_src);
-      bw.write<25>(addr_dest);
-      bw.write<64>(stride_src_glb);
-      bw.write<64>(stride_dest_glb);
-      bw.write<16>(shape_n);
-      bw.write<16>(shape_c);
-      bw.write<16>(shape_h);
-      bw.write<16>(shape_w);
-      bw.write<2>(precision_glb);
-      bw.write<5>(permute);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<8>(ccrclr);
+    //   bw.write<11>(ccrset);
+    //   bw.write<25>(addr_src);
+    //   bw.write<25>(addr_dest);
+    //   bw.write<64>(stride_src_glb);
+    //   bw.write<64>(stride_dest_glb);
+    //   bw.write<16>(shape_n);
+    //   bw.write<16>(shape_c);
+    //   bw.write<16>(shape_h);
+    //   bw.write<16>(shape_w);
+    //   bw.write<2>(precision_glb);
+    //   bw.write<5>(permute);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      ccrclr = br.read<decltype(ccrclr), 8>();
-      ccrset = br.read<decltype(ccrset), 11>();
-      addr_src = br.read<decltype(addr_src), 25>();
-      addr_dest = br.read<decltype(addr_dest), 25>();
-      stride_src_glb = br.read<decltype(stride_src_glb), 64>();
-      stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
-      shape_n = br.read<decltype(shape_n), 16>();
-      shape_c = br.read<decltype(shape_c), 16>();
-      shape_h = br.read<decltype(shape_h), 16>();
-      shape_w = br.read<decltype(shape_w), 16>();
-      precision_glb = br.read<decltype(precision_glb), 2>();
-      permute = br.read<decltype(permute), 5>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   ccrclr = br.read<decltype(ccrclr), 8>();
+    //   ccrset = br.read<decltype(ccrset), 11>();
+    //   addr_src = br.read<decltype(addr_src), 25>();
+    //   addr_dest = br.read<decltype(addr_dest), 25>();
+    //   stride_src_glb = br.read<decltype(stride_src_glb), 64>();
+    //   stride_dest_glb = br.read<decltype(stride_dest_glb), 64>();
+    //   shape_n = br.read<decltype(shape_n), 16>();
+    //   shape_c = br.read<decltype(shape_c), 16>();
+    //   shape_h = br.read<decltype(shape_h), 16>();
+    //   shape_w = br.read<decltype(shape_w), 16>();
+    //   precision_glb = br.read<decltype(precision_glb), 2>();
+    //   permute = br.read<decltype(permute), 5>();
+    // }
   };
 
   /**
@@ -4121,103 +3913,103 @@ DDR)（slice起始地址）
     MFU_MN_PORTIN in43 : 6; /** SELECT1_IN_1连接的端口 **/
     MFU_MN_PORTIN in44 : 6; /** SELECT1_IN_2连接的端口 **/
 
-    void serialize(bitwriter &bw) const
-    {
-      bw.write<8>(opcode);
-      bw.write<6>(in1);
-      bw.write<6>(in2);
-      bw.write<6>(in3);
-      bw.write<6>(in4);
-      bw.write<6>(in5);
-      bw.write<6>(in6);
-      bw.write<6>(in7);
-      bw.write<6>(in8);
-      bw.write<6>(in9);
-      bw.write<6>(in10);
-      bw.write<6>(in11);
-      bw.write<6>(in12);
-      bw.write<6>(in13);
-      bw.write<6>(in14);
-      bw.write<6>(in15);
-      bw.write<6>(in16);
-      bw.write<6>(in17);
-      bw.write<6>(in18);
-      bw.write<6>(in19);
-      bw.write<6>(in20);
-      bw.write<6>(in21);
-      bw.write<6>(in22);
-      bw.write<6>(in23);
-      bw.write<6>(in24);
-      bw.write<6>(in25);
-      bw.write<6>(in26);
-      bw.write<6>(in27);
-      bw.write<6>(in28);
-      bw.write<6>(in29);
-      bw.write<6>(in30);
-      bw.write<6>(in31);
-      bw.write<6>(in32);
-      bw.write<6>(in33);
-      bw.write<6>(in34);
-      bw.write<6>(in35);
-      bw.write<6>(in36);
-      bw.write<6>(in37);
-      bw.write<6>(in38);
-      bw.write<6>(in39);
-      bw.write<6>(in40);
-      bw.write<6>(in41);
-      bw.write<6>(in42);
-      bw.write<6>(in43);
-      bw.write<6>(in44);
-    }
+    // void serialize(bitwriter &bw) const
+    // {
+    //   bw.write<8>(opcode);
+    //   bw.write<6>(in1);
+    //   bw.write<6>(in2);
+    //   bw.write<6>(in3);
+    //   bw.write<6>(in4);
+    //   bw.write<6>(in5);
+    //   bw.write<6>(in6);
+    //   bw.write<6>(in7);
+    //   bw.write<6>(in8);
+    //   bw.write<6>(in9);
+    //   bw.write<6>(in10);
+    //   bw.write<6>(in11);
+    //   bw.write<6>(in12);
+    //   bw.write<6>(in13);
+    //   bw.write<6>(in14);
+    //   bw.write<6>(in15);
+    //   bw.write<6>(in16);
+    //   bw.write<6>(in17);
+    //   bw.write<6>(in18);
+    //   bw.write<6>(in19);
+    //   bw.write<6>(in20);
+    //   bw.write<6>(in21);
+    //   bw.write<6>(in22);
+    //   bw.write<6>(in23);
+    //   bw.write<6>(in24);
+    //   bw.write<6>(in25);
+    //   bw.write<6>(in26);
+    //   bw.write<6>(in27);
+    //   bw.write<6>(in28);
+    //   bw.write<6>(in29);
+    //   bw.write<6>(in30);
+    //   bw.write<6>(in31);
+    //   bw.write<6>(in32);
+    //   bw.write<6>(in33);
+    //   bw.write<6>(in34);
+    //   bw.write<6>(in35);
+    //   bw.write<6>(in36);
+    //   bw.write<6>(in37);
+    //   bw.write<6>(in38);
+    //   bw.write<6>(in39);
+    //   bw.write<6>(in40);
+    //   bw.write<6>(in41);
+    //   bw.write<6>(in42);
+    //   bw.write<6>(in43);
+    //   bw.write<6>(in44);
+    // }
 
-    void deserialize(bitreader &br)
-    {
-      opcode = br.read<decltype(opcode), 8>();
-      in1 = br.read<decltype(in1), 6>();
-      in2 = br.read<decltype(in2), 6>();
-      in3 = br.read<decltype(in3), 6>();
-      in4 = br.read<decltype(in4), 6>();
-      in5 = br.read<decltype(in5), 6>();
-      in6 = br.read<decltype(in6), 6>();
-      in7 = br.read<decltype(in7), 6>();
-      in8 = br.read<decltype(in8), 6>();
-      in9 = br.read<decltype(in9), 6>();
-      in10 = br.read<decltype(in10), 6>();
-      in11 = br.read<decltype(in11), 6>();
-      in12 = br.read<decltype(in12), 6>();
-      in13 = br.read<decltype(in13), 6>();
-      in14 = br.read<decltype(in14), 6>();
-      in15 = br.read<decltype(in15), 6>();
-      in16 = br.read<decltype(in16), 6>();
-      in17 = br.read<decltype(in17), 6>();
-      in18 = br.read<decltype(in18), 6>();
-      in19 = br.read<decltype(in19), 6>();
-      in20 = br.read<decltype(in20), 6>();
-      in21 = br.read<decltype(in21), 6>();
-      in22 = br.read<decltype(in22), 6>();
-      in23 = br.read<decltype(in23), 6>();
-      in24 = br.read<decltype(in24), 6>();
-      in25 = br.read<decltype(in25), 6>();
-      in26 = br.read<decltype(in26), 6>();
-      in27 = br.read<decltype(in27), 6>();
-      in28 = br.read<decltype(in28), 6>();
-      in29 = br.read<decltype(in29), 6>();
-      in30 = br.read<decltype(in30), 6>();
-      in31 = br.read<decltype(in31), 6>();
-      in32 = br.read<decltype(in32), 6>();
-      in33 = br.read<decltype(in33), 6>();
-      in34 = br.read<decltype(in34), 6>();
-      in35 = br.read<decltype(in35), 6>();
-      in36 = br.read<decltype(in36), 6>();
-      in37 = br.read<decltype(in37), 6>();
-      in38 = br.read<decltype(in38), 6>();
-      in39 = br.read<decltype(in39), 6>();
-      in40 = br.read<decltype(in40), 6>();
-      in41 = br.read<decltype(in41), 6>();
-      in42 = br.read<decltype(in42), 6>();
-      in43 = br.read<decltype(in43), 6>();
-      in44 = br.read<decltype(in44), 6>();
-    }
+    // void deserialize(bitreader &br)
+    // {
+    //   opcode = br.read<decltype(opcode), 8>();
+    //   in1 = br.read<decltype(in1), 6>();
+    //   in2 = br.read<decltype(in2), 6>();
+    //   in3 = br.read<decltype(in3), 6>();
+    //   in4 = br.read<decltype(in4), 6>();
+    //   in5 = br.read<decltype(in5), 6>();
+    //   in6 = br.read<decltype(in6), 6>();
+    //   in7 = br.read<decltype(in7), 6>();
+    //   in8 = br.read<decltype(in8), 6>();
+    //   in9 = br.read<decltype(in9), 6>();
+    //   in10 = br.read<decltype(in10), 6>();
+    //   in11 = br.read<decltype(in11), 6>();
+    //   in12 = br.read<decltype(in12), 6>();
+    //   in13 = br.read<decltype(in13), 6>();
+    //   in14 = br.read<decltype(in14), 6>();
+    //   in15 = br.read<decltype(in15), 6>();
+    //   in16 = br.read<decltype(in16), 6>();
+    //   in17 = br.read<decltype(in17), 6>();
+    //   in18 = br.read<decltype(in18), 6>();
+    //   in19 = br.read<decltype(in19), 6>();
+    //   in20 = br.read<decltype(in20), 6>();
+    //   in21 = br.read<decltype(in21), 6>();
+    //   in22 = br.read<decltype(in22), 6>();
+    //   in23 = br.read<decltype(in23), 6>();
+    //   in24 = br.read<decltype(in24), 6>();
+    //   in25 = br.read<decltype(in25), 6>();
+    //   in26 = br.read<decltype(in26), 6>();
+    //   in27 = br.read<decltype(in27), 6>();
+    //   in28 = br.read<decltype(in28), 6>();
+    //   in29 = br.read<decltype(in29), 6>();
+    //   in30 = br.read<decltype(in30), 6>();
+    //   in31 = br.read<decltype(in31), 6>();
+    //   in32 = br.read<decltype(in32), 6>();
+    //   in33 = br.read<decltype(in33), 6>();
+    //   in34 = br.read<decltype(in34), 6>();
+    //   in35 = br.read<decltype(in35), 6>();
+    //   in36 = br.read<decltype(in36), 6>();
+    //   in37 = br.read<decltype(in37), 6>();
+    //   in38 = br.read<decltype(in38), 6>();
+    //   in39 = br.read<decltype(in39), 6>();
+    //   in40 = br.read<decltype(in40), 6>();
+    //   in41 = br.read<decltype(in41), 6>();
+    //   in42 = br.read<decltype(in42), 6>();
+    //   in43 = br.read<decltype(in43), 6>();
+    //   in44 = br.read<decltype(in44), 6>();
+    // }
   };
 
   ////////////////////////////
@@ -4274,7 +4066,7 @@ DDR)（slice起始地址）
   {
   public:
     virtual ~gnne_instruction() = default;
-    virtual void serialize(binary_writer &writer) const = 0;
+    // virtual void serialize(binary_writer &writer) const = 0;
     virtual void to_string(std::ostream &out) const = 0;
     [[nodiscard]] virtual OPCODE opcode() const = 0;
     [[nodiscard]] std::string to_string() const;
@@ -4300,7 +4092,7 @@ DDR)（slice起始地址）
 
     [[nodiscard]] struct INST_NOP to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4340,7 +4132,7 @@ DDR)（slice起始地址）
 
     [[nodiscard]] struct INST_LI to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4401,7 +4193,7 @@ DDR)（slice起始地址）
 
     [[nodiscard]] struct INST_INTR to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4461,7 +4253,7 @@ DDR)（slice起始地址）
 
     [[nodiscard]] struct INST_END to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4504,7 +4296,7 @@ DDR)（slice起始地址）
 
     [[nodiscard]] struct INST_FENCE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4555,7 +4347,7 @@ DDR)（slice起始地址）
 
     [[nodiscard]] struct INST_MMU_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4639,7 +4431,7 @@ CCR屏障，用来阻挡使用到本CCR的指令的分发，可以用来实现�
 
     [[nodiscard]] struct INST_FENCE_CCR to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4723,7 +4515,7 @@ CCR屏障，用来阻挡使用到本CCR的指令的分发，可以用来实现�
 
     [[nodiscard]] struct INST_LOADIF_CONFIG to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -4870,7 +4662,7 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值 **/
 
     [[nodiscard]] struct INST_LOADIF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5030,7 +4822,7 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值 **/
 
     [[nodiscard]] struct INST_LOAD to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5197,7 +4989,7 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
 
     [[nodiscard]] struct INST_LOADIF_COMPRESS_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5284,7 +5076,7 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
 
     [[nodiscard]] struct INST_LOAD_COMPRESS_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5383,7 +5175,7 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
 
     [[nodiscard]] struct INST_STORE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5572,7 +5364,7 @@ DDR访问的地址需要加上这个寄存器指示的寄存器的值
 
     [[nodiscard]] struct INST_STORE_T_CONFIG to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5735,7 +5527,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_STORE_T to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5866,7 +5658,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_STORE_T_COMPRESS_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -5955,7 +5747,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_STORE_COMPRESS_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6021,7 +5813,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DM_BROADCAST to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6117,7 +5909,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DM_CONF_IF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6273,7 +6065,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DM_FETCHIF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6371,7 +6163,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DM_CONF_W to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6437,7 +6229,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DM_FETCHW to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6531,7 +6323,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DM_CONF_OF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6693,7 +6485,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_PU_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6832,7 +6624,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_PU_CONF_ACT to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -6920,7 +6712,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_PU_COMPUTE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7024,7 +6816,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DOT_DM_IF_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7110,7 +6902,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DOT_DM_OF_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7238,7 +7030,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DOT_DM_FETCH_SRC1 to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7303,7 +7095,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_DOT_DM_FETCH_SRC2 to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7374,7 +7166,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_TCU_PU_COMPUTE_DUMMY to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7480,7 +7272,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_MAP_COMPUTE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7627,7 +7419,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_VMAP_COMPUTE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7756,7 +7548,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_REDUCE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -7929,7 +7721,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_VREDUCE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8077,7 +7869,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_BROADCAST_COMPUTE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8219,7 +8011,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_REDUCE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8397,7 +8189,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8741,7 +8533,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MNOP_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8803,7 +8595,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_PDP_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8855,7 +8647,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_PDP_SRC_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -8953,7 +8745,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_PDP_REDUCE to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -9213,7 +9005,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_BROADCAST_CONF to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -9456,7 +9248,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_CROP to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -9642,7 +9434,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MEMSET to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -9737,7 +9529,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MEMCPY to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -9889,7 +9681,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_TRANS to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**
@@ -10148,7 +9940,7 @@ DDR，并且可能发生转置或者数据类型转换
 
     [[nodiscard]] struct INST_MFU_MN_CONF2 to_struct() const;
 
-    void serialize(binary_writer &writer) const override;
+    // void serialize(binary_writer &writer) const override;
 
     // getter and setters
     /**

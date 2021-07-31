@@ -1,5 +1,6 @@
 
 #include "commom.hpp"
+#include "to_tuple.h"
 #include <gtest/gtest.h>
 
 // 调试辅助
@@ -108,28 +109,154 @@ TEST(test, cumprod)
   print_sequence(cumsum<seq<>, seq<3, 1, 2, 3, 4>>::type{});
 }
 
-// int main() {
-//   callmat(1);
-//   callmat(1, 2);
-//   callmat(1, 2, 3);
-//   getmat(std::integer_sequence<int, 9, 2, 5>{});
-//   // std::integer_sequence<int, 3> in_shape{};
-//   // in_shape[0] = 2;
-//   // in_shape[1] = 3;
-//   // in_shape[2] = 4;
-//   // getmat(in_shape);
-//   print_sequence(std::make_integer_sequence<int, 20>{});
-//   print_sequence(std::make_index_sequence<10>{});
-//   print_sequence(std::index_sequence_for<float, std::iostream, char>{});
+constexpr size_t MAX_MODULE_TYPE_LENGTH = 16;
 
-//   // std::array<int, 4> array = {1, 2, 3, 4};
+typedef std::array<char, MAX_MODULE_TYPE_LENGTH> module_type_t;
 
-//   // // 转换 array 为 tuple
-//   // auto tuple = a2t(array);
-//   // static_assert(
-//   //     std::is_same<decltype(tuple), std::tuple<int, int, int, int>>::value,
-//   //     "");
+using memory_location_t = uint8_t;
 
-//   // // 打印到 cout
-//   // std::cout << tuple << '\n';
-// }
+struct mempool_desc
+{
+  memory_location_t location;
+  uint32_t size;
+};
+
+struct section_header
+{
+  module_type_t name;
+  uint32_t flags;
+  uint32_t start;
+  uint32_t size;
+  uint32_t reserved0;
+};
+
+namespace impl
+{
+  template <typename T>
+  struct is_std_array : std::false_type
+  {
+  };
+
+  template <typename T, size_t N>
+  struct is_std_array<std::array<T, N>> : std::true_type
+  {
+  };
+
+  template <typename T>
+  constexpr static bool is_std_array_v = is_std_array<T>::value;
+
+  template <typename T1, typename T2, size_t... Is>
+  constexpr void array_copy(T1 *dest, T2 *src, size_t start, std::index_sequence<Is...>)
+  {
+    static_assert(sizeof(T1) == sizeof(T2), "the dest size must equal src size");
+    ((*(dest + start + Is) = *(src + Is)), ...);
+  }
+
+  template <typename T, size_t... Is>
+  constexpr void assgin_to_array(std::array<uint8_t, sizeof(T)> &dest, const T &src, std::index_sequence<Is...>)
+  {
+    if constexpr (std::is_integral_v<T>)
+    {
+      ((dest[Is] = (src >> (Is * 8))), ...);
+    }
+    else if constexpr (is_std_array_v<T>)
+    {
+      array_copy(dest.data(), src.data(), 0, std::index_sequence<Is...>{});
+    }
+    else
+    {
+      static_assert(sizeof(T) == 0, "the type can't assgin to array");
+    }
+  }
+
+} // namespace impl
+
+namespace std
+{
+  // NOTE the operator+ for tuple fold expression must decl in std;
+  template <typename T, size_t N, size_t M>
+  constexpr std::array<T, N + M> operator+(const std::array<T, N> &a, const std::array<T, M> &b)
+  {
+    std::array<T, N + M> c{};
+    impl::array_copy(c.data(), a.data(), 0, std::make_index_sequence<N>{});
+    impl::array_copy(c.data(), b.data(), N, std::make_index_sequence<M>{});
+    return c;
+  }
+
+} // namespace
+
+template <typename T>
+constexpr std::array<uint8_t, sizeof(T)> to_array(const T &v)
+{
+  std::array<uint8_t, sizeof(T)> arr{};
+  impl::assgin_to_array(arr, v, std::make_index_sequence<sizeof(T)>{});
+  return arr;
+};
+
+TEST(test, to_array)
+{
+  constexpr uint64_t a = 0x42325;
+  constexpr uint32_t b = 0x1212121;
+  constexpr uint16_t c = 0x2313;
+  constexpr auto a_ = to_array(a);
+  constexpr auto b_ = to_array(b);
+  constexpr auto c_ = to_array(c);
+  ic(std::bitset<64>(*(uint64_t *)a_.data()));
+  ic(std::bitset<32>(*(uint32_t *)b_.data()));
+  ic(std::bitset<16>(*(uint16_t *)c_.data()));
+  // NOTE toarray can't detail float
+  constexpr module_type_t m = {'H', 'E', 'L', 'L', 'O'};
+  constexpr auto m_ = to_array(m);
+  ic(m_);
+}
+
+TEST(test, array_concat)
+{
+  constexpr uint64_t a = 0x42325;
+  constexpr auto a_ = to_array(a);
+  ic(std::bitset<64>(*(uint64_t *)a_.data()));
+  // NOTE toarray can't detail float
+  constexpr module_type_t m = {'H', 'E', 'L', 'L', 'O'};
+  constexpr auto m_ = to_array(m);
+  constexpr auto x = a_ + m_;
+  ic(x);
+}
+
+namespace impl
+{
+  template <typename... Tp, size_t... Is>
+  constexpr std::array<uint8_t, (sizeof(Tp) + ...)> tuple_to_array(const std::tuple<Tp...> &v, std::index_sequence<Is...>)
+  {
+    return (to_array(std::get<Is>(v)) + ...);
+  };
+
+} // namespace impl
+
+template <typename... Tp>
+constexpr std::array<uint8_t, (sizeof(Tp) + ...)> to_array(const std::tuple<Tp...> &v)
+{
+  return impl::tuple_to_array(v, std::make_index_sequence<sizeof...(Tp)>{});
+};
+
+TEST(test, tuple)
+{
+  constexpr section_header h{
+      {'H', 'E', 'L', 'L', 'O'},
+      0x11,
+      0x22,
+      0x33,
+      0x44};
+  //
+  constexpr auto t = to_tuple(h);
+  constexpr auto arr = to_array(t);
+  ic(arr);
+  // ic(tuple_add(b));
+
+  // ic();
+  // 要直接把整个tuple都转换到array然后concat
+
+  // write_tuple(a);
+  // constexpr auto b = write<std::integral_constant<double, 1.>>{};
+
+  // constexpr auto c = write(1);
+}

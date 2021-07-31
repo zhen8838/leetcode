@@ -48,7 +48,7 @@ TEST(chapter1, _1_1_2)
 {
   // NOTE 我们构建的类型映射,把int 或者 uint32都转换到了uint64,然后利用比较他的类型是否和uint64相同.
   Fun<int> a = 0x1;
-  ic(is_same<decltype(a), uint64_t>::value);
+  ic(std::is_same<decltype(a), uint64_t>::value);
 }
 
 /* 各种元函数表示方法
