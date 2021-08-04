@@ -271,8 +271,68 @@ TEST(chapter1, _1_3_2)
   print_any(true);
 }
 
-// 如果我们所有的操作都是在操作类型,我们可以用继承的方式把类型进行传递,这样就不需要中间变量.
-// 当然在类型操作不足的时候,我们可以利用一些操作补足他们,比如下面这个例子就是先利用一个constexpr函数求值,此时这个值的类型是integral_constant类型,我们再decltype得到他的类型,再获取他的值.(这是个简单的例子,可能看不出这样有什么方便的)
+/* 
+### 循环执行的代码
+通常我们需要用递归的方式进行执行
+*/
+
+template <size_t Input>
+constexpr size_t Onescount = (Input % 2) + Onescount<(Input / 2)>;
+
+template <>
+constexpr size_t Onescount<0> = 0;
+
+TEST(chapter1, _1_3_3)
+{
+  constexpr size_t res = Onescount<45>;
+  ic(res);
+}
+
+/* 
+## 练习
+*/
+
+/* 
+### 练习1
+构造一个输入为类型输出为值的元函数
+*/
+
+template <typename T>
+struct get_type_size : std::integral_constant<size_t, sizeof(T)>
+{
+};
+
+TEST(chapter1, practice_1)
+{
+  ic(get_type_size<std::tuple<int, float, double>>::value);
+  ic(get_type_size<float>::value);
+}
+
+/* 
+### 练习2
+元函数的输入参数甚至可以是类型与数值混合的。尝试构造个元函数,其输入参数为一个类型以及一个整数。如果该类型所对应对象的大小等于该整数,那么返回true,否则返回 false。
+*/
+
+template <typename T, size_t N>
+struct get_type_size2 : std::bool_constant<sizeof(T) == N>
+{
+};
+
+TEST(chapter1, practice_2)
+{
+  ic(get_type_size2<std::tuple<int, float, double>, 16>::value);
+  ic(get_type_size2<float, 16>::value);
+  ic(get_type_size2<uint64_t, 8>::value);
+}
+
+/* 
+### 练习3
+其他的元函数表现形式
+
+如果我们所有的操作都是在操作类型,我们可以用继承的方式把类型进行传递,这样就不需要中间变量.
+当然在类型操作不足的时候,我们可以利用一些操作补足他们,比如下面这个例子就是先利用一个constexpr函数求值,此时这个值的类型是integral_constant类型,我们再decltype得到他的类型,再获取他的值.(这是个简单的例子,可能看不出这样有什么方便的)
+*/
+
 template <size_t A, size_t B>
 constexpr auto add()
 {
@@ -284,34 +344,112 @@ struct add_ : decltype(add<A, B>())
 {
 };
 
-TEST(chapter1, question_1)
+TEST(chapter1, question_3)
 {
   ic(add_<1, 2>::value);
 }
 
 /* 
-##  模板元函数的写法 1
+### 练习4
+构造一个元函数,返回另一个元函数
 */
-
-// 定义元函数的入参,这里表明这个结构体接收一个类型作为参数
 template <typename T>
-struct method_1
+struct reduce
+{
+  using type = std::integral_constant<size_t, 0>;
+};
+
+template <size_t A, size_t B>
+struct reduce<std::index_sequence<A, B>>
+{
+  using type = std::integral_constant<size_t, A + B>;
+};
+
+template <size_t A, size_t B, size_t... Ns>
+struct reduce<std::index_sequence<A, B, Ns...>>
+{
+
+  using type = typename reduce<std::index_sequence<A + B, Ns...>>::type;
+};
+
+TEST(chapter1, question_4)
+{
+  ic(reduce<std::index_sequence<1, 2, 3, 4>>::type::value);
+}
+
+/* 
+### 练习5
+ 使用 SFINAE构造一个元函数:输入一个类型T,当T存在子类型type时该元函数返回true,否则返回 false
+ */
+
+template <typename T, typename = void>
+struct has_type : std::false_type
 {
 };
 
-// 我们特化上面的那个元函数,通常特化直接写值,但是由于我们当前给的参数还依赖一个未知的`Value`,因此还需要给元函数再加一个模板类型.
-template <size_t Value>
-struct method_1<std::integral_constant<size_t, Value>>
+template <typename T>
+struct has_type<T, std::void_t<typename T::type>> : std::true_type
 {
-  // 同时对于这个模板元的返回值也有两种方法,可以是一个静态的变量,也可以是对应的类型(此时那个类型其实也保存了值)
-  constexpr static size_t one_v = Value + 1;
-  using one_t = std::integral_constant<size_t, Value + 1>;
 };
 
-TEST(chapter1, question_2)
+TEST(chapter1, question_5)
 {
-  auto a = method_1<std::integral_constant<size_t, 3>>::one_v;
-  ic(a);
-  auto b = method_1<std::integral_constant<size_t, 3>>::one_t::value;
-  ic(b);
+  ic(has_type<reduce<std::index_sequence<1, 2, 3, 4>>>::value);
+  ic(has_type<int>::value);
+}
+
+/* 
+### 练习6
+使用在本章中学到的循环代码书写方式,编写一个元函数,输入一个类型数组,输出一个无符号整型数组,输出数组中的每个元素表示了输入数组中相应类型变量的大小。
+ */
+
+template <typename... TArgs>
+struct get_sizes
+{
+  constexpr static std::array<size_t, sizeof...(TArgs)> arr = {sizeof(TArgs)...};
+};
+
+TEST(chapter1, question_6)
+{
+  ic(get_sizes<int, float, double, int8_t, uint32_t>::arr);
+}
+
+/* 
+### 练习7
+使用分支短路逻辑实现一个元函数,给定一个整数序列,判断其中是否存在值为1 的元素。如果存在,就返回true,否则返回 false
+ */
+
+template <size_t V>
+constexpr bool is_zero = (V == 0);
+
+template <bool cur, typename TNext>
+constexpr static bool AndValue = false;
+
+template <typename TNext>
+constexpr static bool AndValue<true, TNext> = TNext::value;
+
+template <typename T>
+struct has_one
+{
+  constexpr static bool value = false;
+};
+
+template <size_t V>
+struct has_one<std::index_sequence<V>>
+{
+  constexpr static bool value = is_zero<V>;
+};
+
+template <size_t V, size_t... Ns>
+struct has_one<std::index_sequence<V, Ns...>>
+{
+  constexpr static bool cur_is_zero = is_zero<V>;
+  constexpr static bool value = AndValue<cur_is_zero, has_one<std::index_sequence<Ns...>>>;
+};
+
+TEST(chapter1, question_7)
+{
+  ic(has_one<std::index_sequence<0, 0, 0, 0, 0, 0, 0, 0, 1>>::value);
+  ic(has_one<std::index_sequence<0, 0, 0, 0, 0, 0, 0, 0>>::value);
+  ic(has_one<std::index_sequence<0, 1, 0, 0, 0, 0, 0, 0>>::value);
 }
