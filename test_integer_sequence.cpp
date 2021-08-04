@@ -111,24 +111,9 @@ TEST(test, cumprod)
 
 constexpr size_t MAX_MODULE_TYPE_LENGTH = 16;
 
-typedef std::array<char, MAX_MODULE_TYPE_LENGTH> module_type_t;
+using module_type_t = std::array<char, MAX_MODULE_TYPE_LENGTH>;
 
 using memory_location_t = uint8_t;
-
-struct mempool_desc
-{
-  memory_location_t location;
-  uint32_t size;
-};
-
-struct section_header
-{
-  module_type_t name;
-  uint32_t flags;
-  uint32_t start;
-  uint32_t size;
-  uint32_t reserved0;
-};
 
 namespace impl
 {
@@ -238,6 +223,21 @@ constexpr std::array<uint8_t, (sizeof(Tp) + ...)> to_array(const std::tuple<Tp..
   return impl::tuple_to_array(v, std::make_index_sequence<sizeof...(Tp)>{});
 };
 
+struct mempool_desc
+{
+  memory_location_t location;
+  uint32_t size;
+};
+
+struct section_header
+{
+  module_type_t name;
+  uint32_t flags;
+  uint32_t start;
+  uint32_t size;
+  uint32_t reserved0;
+};
+
 TEST(test, tuple)
 {
   constexpr section_header h{
@@ -246,17 +246,19 @@ TEST(test, tuple)
       0x22,
       0x33,
       0x44};
-  //
+  // //
   constexpr auto t = to_tuple(h);
+  ic(sizeof(std::get<0>(t)));
+  ic(sizeof(t));
   constexpr auto arr = to_array(t);
   ic(arr);
-  // ic(tuple_add(b));
 
-  // ic();
-  // 要直接把整个tuple都转换到array然后concat
-
-  // write_tuple(a);
-  // constexpr auto b = write<std::integral_constant<double, 1.>>{};
-
-  // constexpr auto c = write(1);
+  constexpr auto a = is_braces_constructible<section_header, any_type, any_type, any_type>{};
+  constexpr auto b = is_braces_constructible<section_header, any_type, any_type, any_type, any_type>{};
+  constexpr auto c = is_braces_constructible<section_header, any_type, any_type, any_type, any_type, any_type>{};
+  constexpr auto d = is_braces_constructible<section_header, any_type, any_type, any_type, any_type, any_type, any_type, any_type, any_type, any_type, any_type>{};
+  ic(a);
+  ic(b);
+  ic(c);
+  ic(d);
 }
