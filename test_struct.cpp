@@ -78,3 +78,17 @@ TEST(test, stuct_T)
 {
   // inst_xxx_t<> // NOTE 有没有类似指派初始化的方法?
 }
+
+struct base_t
+{
+};
+
+struct : base_t
+{
+  int a;
+} op_decs;
+
+TEST(test, unnamed)
+{
+  IC(op_decs.a);
+}

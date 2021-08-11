@@ -66,19 +66,29 @@ TEST(test_int, int64_to_int_tansform)
   size_t size = 4;
   std::vector<int> data;
   data.reserve(size);
-  std::transform(ptr, ptr + size, std::back_inserter(data), [](const uint64_t &e)
-                 {
-                   IC(e, static_cast<int>(e));
-                   int re;
-                   if (e > (uint64_t)std::numeric_limits<int>::max())
-                   {
-                     re = std::numeric_limits<int>::max();
-                   }
-                   else
-                   {
-                     re = static_cast<int>(e);
-                   }
-                   IC(re);
-                   return (int)e;
-                 });
+  std::transform(ptr, ptr + size, std::back_inserter(data), [](const uint64_t &e) {
+    IC(e, static_cast<int>(e));
+    int re;
+    if (e > (uint64_t)std::numeric_limits<int>::max())
+    {
+      re = std::numeric_limits<int>::max();
+    }
+    else
+    {
+      re = static_cast<int>(e);
+    }
+    IC(re);
+    return (int)e;
+  });
+}
+
+TEST(test_float, float)
+{
+  float f = 1.76268616E+10;
+  uint32_t u = *reinterpret_cast<uint32_t *>(&f);
+  IC(std::bitset<32>(u));
+  int mul_shift;
+  float mul = std::frexpf(f, &mul_shift);
+  IC(mul, mul_shift);
+  // ASSERT_EQ(std::bitset<32>(""), std::bitset<32>(23.43));
 }
