@@ -92,3 +92,48 @@ TEST(test, unnamed)
 {
   IC(op_decs.a);
 }
+
+template <typename T, bool ByteAligned = true>
+struct slot_decs
+{
+  using datatype = T;
+  const static bool byte_aligned = ByteAligned;
+  size_t bits_offset;
+  size_t total_bits;
+  size_t elem_size;
+};
+
+// slot 是一个嵌套的结构体,每个内部都保存了对应的数据以及槽,
+// todo 到时候直接对数据赋值,然后把对应的slot全部写入.
+struct __gnne_add_slot_t
+{
+  struct _src1
+  { 
+    /* data region */
+    size_t bytes;
+    /* slot region */
+    constexpr static auto bytes_slot = std::make_tuple(
+        slot_decs<uint32_t, true>{416, 32, 1},
+        slot_decs<uint32_t, true>{896, 32, 1});
+
+    constexpr static auto shape_slot = std::make_tuple(
+        slot_decs<uint32_t, true>{704, 32, 4},
+        slot_decs<uint16_t, false>{2371, 16, 4});
+  } src1{};
+
+  struct _src2
+  {
+    constexpr static auto bytes_slot = std::make_tuple(
+        slot_decs<uint32_t, true>{352, 32, 1},
+        slot_decs<uint32_t, true>{640, 32, 1});
+    constexpr static auto shape_slot = std::make_tuple(
+        slot_decs<uint32_t, true>{960, 32, 4});
+  } src2{};
+};
+
+TEST(test, inner_struct)
+{
+  __gnne_add_slot_t add_desc{};
+  IC(add_desc.src2.shape_slot);
+  IC(add_desc.src1.bytes);
+}
