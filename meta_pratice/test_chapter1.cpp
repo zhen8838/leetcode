@@ -453,3 +453,5 @@ TEST(chapter1, question_7)
   ic(has_one<std::index_sequence<0, 0, 0, 0, 0, 0, 0, 0>>::value);
   ic(has_one<std::index_sequence<0, 1, 0, 0, 0, 0, 0, 0>>::value);
 }
+
+

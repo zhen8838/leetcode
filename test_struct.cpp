@@ -103,14 +103,17 @@ struct slot_decs
   size_t elem_size;
 };
 
-// slot 是一个嵌套的结构体,每个内部都保存了对应的数据以及槽,
-// todo 到时候直接对数据赋值,然后把对应的slot全部写入.
-struct __gnne_add_slot_t
+struct slot_desc_t
+{
+};
+
+struct __gnne_add_slot_t : slot_desc_t
 {
   struct _src1
-  { 
+  {
     /* data region */
     size_t bytes;
+    std::vector<size_t> shape;
     /* slot region */
     constexpr static auto bytes_slot = std::make_tuple(
         slot_decs<uint32_t, true>{416, 32, 1},
@@ -123,17 +126,33 @@ struct __gnne_add_slot_t
 
   struct _src2
   {
+
+    size_t bytes;
+    std::vector<size_t> shape;
+
     constexpr static auto bytes_slot = std::make_tuple(
         slot_decs<uint32_t, true>{352, 32, 1},
         slot_decs<uint32_t, true>{640, 32, 1});
     constexpr static auto shape_slot = std::make_tuple(
         slot_decs<uint32_t, true>{960, 32, 4});
   } src2{};
-};
+} gnne_add_slot{};
 
 TEST(test, inner_struct)
 {
   __gnne_add_slot_t add_desc{};
   IC(add_desc.src2.shape_slot);
   IC(add_desc.src1.bytes);
+}
+
+// 这种多态没有太大的意义,并且如果是虚继承的多态,我必须要在虚类中存储所有的变量类型才行.
+void write_slot(slot_desc_t *p)
+{
+  auto dp = static_cast<__gnne_add_slot_t *>(p);
+  IC(dp->src1.bytes);
+}
+
+TEST(test, dynamic_point)
+{
+  write_slot(&gnne_add_slot);
 }

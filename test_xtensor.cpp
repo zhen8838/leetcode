@@ -92,3 +92,10 @@ TEST(test_float, float)
   IC(mul, mul_shift);
   // ASSERT_EQ(std::bitset<32>(""), std::bitset<32>(23.43));
 }
+
+TEST(test_uint8, uint8)
+{
+  uint8_t x = -2;
+  IC(x);
+  IC(*(reinterpret_cast<int8_t *>(&x)));
+}
