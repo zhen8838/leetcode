@@ -3,7 +3,7 @@ project(cpp_learn)
  
  
 #设定编译参数
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
  
 #设定源码列表.cpp
 # aux_source_directory(${CMAKE_SOURCE_DIR} DIR)
