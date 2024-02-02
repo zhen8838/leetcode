@@ -107,9 +107,5 @@
         "--max-line-length=100",
         "--ignore=E402",
     ],
-    "python.pythonPath": "/Users/lisa/mambaforge/envs/py37/bin/python",
     // "C_Cpp.autocomplete": "Disabled"
-    "[cpp]": {
-        "editor.defaultFormatter": "ms-vscode.cpptools"
-    }
 }

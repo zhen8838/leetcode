@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <commom.hpp>
+#include <memory.h>
 
 class StrBlob {
- public:
+public:
   std::shared_ptr<std::vector<std::string>> data;
 
   StrBlob() : data(std::make_shared<std::vector<std::string>>()){};
@@ -12,15 +13,15 @@ class StrBlob {
   size_t size() { return data->size(); };
   size_t use_count() { return data.use_count(); };
 
-  const std::string& front() {
+  const std::string &front() {
     check(0, "front");
     return data->front();
   }
-  const std::string& back() {
+  const std::string &back() {
     check(0, "back");
     return data->back();
   }
-  void push_back(const std::string& s) { data->push_back(s); }
+  void push_back(const std::string &s) { data->push_back(s); }
   void pop_back() {
     check(0, "pop_back");
     data->pop_back();
@@ -31,9 +32,11 @@ class StrBlob {
       data->push_back(*p);
   }
 
- private:
-  void check(size_t i, const std::string& msg) const {
-    if (i >= data->size()) { throw std::out_of_range(msg); }
+private:
+  void check(size_t i, const std::string &msg) const {
+    if (i >= data->size()) {
+      throw std::out_of_range(msg);
+    }
   }
 };
 
@@ -71,7 +74,8 @@ TEST(test, t_12_5) {
 }
 
 auto create_vector() {
-  return std::make_shared<std::vector<int>>(std::initializer_list<int>{1, 2, 3});
+  return std::make_shared<std::vector<int>>(
+      std::initializer_list<int>{1, 2, 3});
 }
 void read_vector(std::shared_ptr<std::vector<int>> v) { v->push_back(12); }
 void print_vector(std::shared_ptr<std::vector<int>> v) { ic(*v); }
@@ -87,4 +91,31 @@ TEST(test, t_12_6) {
   std::shared_ptr<std::vector<int>> p = create_vector();
   read_vector(p);
   print_vector(p);
+}
+
+template <typename T> void store(T *src, T v) { *src = v; }
+
+TEST(test, refer_var) {
+  size_t x = 0;
+  auto &&v1 = x + 10;
+  auto all = new uint8_t[10];
+  for (int i = 0; i < 10; i++) {
+    uint8_t v1 = 11;
+    store(all, v1);
+    IC(*all);
+  }
+  v1 += 2;
+  IC(x, v1);
+}
+
+TEST(test, ceil) { IC(std::ceil((float)10 / 1536)); }
+
+struct TT {
+  size_t a = 1;
+};
+
+TEST(test, unique_ptr) {
+  std::unique_ptr<TT> t;
+  t = std::make_unique<TT>();
+  IC(t->a);
 }

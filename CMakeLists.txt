@@ -42,8 +42,8 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
  
-find_package(xtensor REQUIRED)
-add_compile_options(-Wno-unused-value -Wno-deprecated-anon-enum-enum-conversion)
+# find_package(xtensor REQUIRED)
+add_compile_options(-Wno-unused-value -Wno-deprecated-anon-enum-enum-conversion -Wno-deprecated-declarations)
 
 #生成可执行文件
 # message(${SOURCE_FILES})
@@ -51,7 +51,7 @@ add_compile_options(-Wno-unused-value -Wno-deprecated-anon-enum-enum-conversion)
 macro(add_test name)
   add_executable(${name} ${name}.cpp)
   target_include_directories(${name} PRIVATE ${xtensor_INCLUDE_DIRS})
-  target_link_libraries(${name} PRIVATE gtest_main xtensor)
+  target_link_libraries(${name} PRIVATE gtest_main)
 endmacro(add_test)
 
 file(GLOB TEST_NAMES CONFIGURE_DEPENDS test_*.cpp)
