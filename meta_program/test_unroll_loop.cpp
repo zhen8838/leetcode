@@ -36,6 +36,18 @@ static constexpr void apply_next(std::array<size_t, Size> &index,
   }
 }
 
+// NOTE 这样好像已经unroll了
+template <class F, size_t... I>
+constexpr void loop_impl(F &&f, std::index_sequence<I...>) {
+  // NOTE index_sequence 是直接存储index 数据
+  (f(I), ...);
+}
+
+template <size_t N, class F> constexpr void loop(F &&f) {
+  // NOTE make_index_sequence 等价于python的range数据
+  loop_impl(std::forward<F>(f), std::make_index_sequence<N>{});
+}
+
 // NOTE 对于一个函数，只需要他是无副作用的，那么就可以在编译期求constexpr
 template <size_t... Dims, class Callable>
 static constexpr void apply(fixed_shape<Dims...>, Callable &&callable) {
@@ -52,3 +64,15 @@ TEST(test_unroll_loop, sum_values) {
   fixed_shape<16, 48, 64> sa;
   ic(sum_from_index<1>(sa));
 }
+
+TEST(test_unroll_loop, loop) {
+  int arr[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  loop<10>([&arr](auto i) { ic(arr[i]); });
+}
+
+template <size_t... Args> size_t constexpr cumprod = 0;
+
+template <size_t First, size_t... Rests>
+size_t constexpr cumprod<First, Rests...> = (First * ... * Rests) + cumprod<Rests...>;
+
+TEST(test_cum_sum, cum_sum) { ic(cumprod<1, 2, 3, 4, 5>); }
