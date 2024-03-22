@@ -2,6 +2,15 @@
 #include <gtest/gtest.h>
 
 namespace detail {
+template <size_t... Dims> struct fixed_dims_base {
+  static constexpr size_t rank() noexcept { return sizeof...(Dims); }
+
+  static constexpr size_t at(size_t index) noexcept {
+    return std::array<size_t, sizeof...(Dims)>{Dims...}[index];
+  }
+
+  constexpr size_t operator[](size_t index) const noexcept { return at(index); }
+};
 
 template <size_t OffSet, size_t... Values, size_t... Indices>
 static constexpr auto sum_selected(std::index_sequence<Indices...>) {
@@ -12,9 +21,27 @@ template <size_t Index, size_t... Values> static constexpr auto At() {
   return get<Index>(std::forward_as_tuple(Values...));
 }
 
+template <template <size_t...> class T, size_t... ADims, size_t... BDims,
+          size_t... I>
+inline constexpr bool is_same_seq(const T<ADims...> &a, const T<BDims...> &b,
+                                  std::index_sequence<I...>) {
+  return ((a[I] == b[I]) && ...);
+}
+
 } // namespace detail
 
-template <size_t... Dims> struct fixed_shape {};
+template <size_t... Dims>
+struct fixed_shape : detail::fixed_dims_base<Dims...> {
+  template <size_t I> struct prepend {
+    using type = fixed_shape<I, Dims...>;
+  };
+
+  template <size_t I> struct append {
+    using type = fixed_shape<Dims..., I>;
+  };
+
+  static constexpr size_t length() noexcept { return (Dims * ... * 1); }
+};
 
 template <size_t Start, size_t... Dims>
 static constexpr size_t sum_from_index(const fixed_shape<Dims...> &) {
@@ -73,6 +100,32 @@ TEST(test_unroll_loop, loop) {
 template <size_t... Args> size_t constexpr cumprod = 0;
 
 template <size_t First, size_t... Rests>
-size_t constexpr cumprod<First, Rests...> = (First * ... * Rests) + cumprod<Rests...>;
+size_t constexpr cumprod<First, Rests...> =
+    (First * ... * Rests) + cumprod<Rests...>;
 
 TEST(test_cum_sum, cum_sum) { ic(cumprod<1, 2, 3, 4, 5>); }
+
+template <template <size_t...> class T, size_t... ADims, size_t... BDims>
+inline constexpr bool is_same_seq(const T<ADims...> &a, const T<BDims...> &b) {
+  return sizeof...(ADims) == sizeof...(BDims) &&
+         detail::is_same_seq(a, b,
+                             std::make_index_sequence<sizeof...(ADims)>{});
+}
+
+TEST(test_is_same_seq, is_same_seq) {
+  ic(is_same_seq(fixed_shape<1, 2, 3>{}, fixed_shape<1, 2, 3>{}));
+}
+
+template <typename Shape> struct fixed_tensor {
+  using shape_type = Shape;
+  static constexpr auto shape() { return Shape{}; }
+};
+
+template <typename T> void foo(const T t) {
+  static_assert(is_same_seq(t.shape(), typename T::shape_type{}), "fuck!");
+}
+
+TEST(test_clang_bug, can_not_detect_constexpr) {
+  fixed_tensor<fixed_shape<1, 2, 3, 4>> t;
+  foo(t);
+}
