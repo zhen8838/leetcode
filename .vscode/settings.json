@@ -1,5 +1,6 @@
 {
     "C_Cpp.errorSquiggles": "Disabled",
+    "testMate.cpp.test.executables": "{build,Build,BUILD,out,Out,OUT}/**/debug/**/*{test,Test,TEST}*",
     "files.associations": {
         "*.cu": "cpp",
         "*.stmt": "julia",
