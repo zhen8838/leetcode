@@ -15,7 +15,7 @@ static uint64_t now(clockid_t which) {
 
 template <size_t Repeat>
 void benchmark(const size_t flops, std::function<void(void)> func,
-               std::string unit = "GFLOPs") {
+               std::string unit = "Gflop/s") {
   auto start_time = now(CLOCK_THREAD_CPUTIME_ID);
   for (int i = 0; i < Repeat; ++i)
     func();
@@ -176,46 +176,28 @@ TEST(test_amx, test_matfp) {
 }
 /**
  * @brief
- * z_nums 1, 410.158 GFlops/s
- * z_nums 2, 824.180 GFlops/s
- * z_nums 3, 1244.750 GFlops/s
- * z_nums 4, 1665.007 GFlops/s
+ * z_nums 1, 410.158 Gflop/s
+ * z_nums 2, 824.180 Gflop/s
+ * z_nums 3, 1244.750 Gflop/s
+ * z_nums 4, 1665.007 Gflop/s
  */
 TEST(test_amx, test_matfp_flops) {
-  auto func0 = []() {
-    constexpr uint64_t a = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(0);
-    AMX_MATFP(a);
-  };
-  auto func1 = []() {
-    constexpr uint64_t a = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(0);
-    constexpr uint64_t b = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(1);
-    AMX_MATFP(a);
-    AMX_MATFP(b);
-  };
-  auto func2 = []() {
-    constexpr uint64_t a = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(0);
-    constexpr uint64_t b = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(1);
-    constexpr uint64_t c = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(2);
-    AMX_MATFP(a);
-    AMX_MATFP(b);
-    AMX_MATFP(c);
-  };
-  auto func3 = []() {
-    constexpr uint64_t a = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(0);
-    constexpr uint64_t b = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(1);
-    constexpr uint64_t c = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(2);
-    constexpr uint64_t d = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(3);
-    AMX_MATFP(a);
-    AMX_MATFP(b);
-    AMX_MATFP(c);
-    AMX_MATFP(d);
-  };
-
-  std::function<void(void)> funcs[4] = {func0, func1, func2, func3};
   std::function<void(void)> perf_func;
   constexpr size_t infer_times = 754974720;
   for (size_t z_nums = 1; z_nums <= 4; z_nums++) {
-    perf_func = funcs[z_nums - 1];
+    perf_func = [&z_nums]() {
+      constexpr uint64_t a = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(0);
+      constexpr uint64_t b = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(1);
+      constexpr uint64_t c = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(2);
+      constexpr uint64_t d = matfp().dtype_mode(matfp_dtype_t::f32f32).z_row(3);
+      AMX_MATFP(a);
+      if (z_nums > 1)
+        AMX_MATFP(b);
+      if (z_nums > 2)
+        AMX_MATFP(c);
+      if (z_nums > 3)
+        AMX_MATFP(d);
+    };
     auto start_time = now(CLOCK_THREAD_CPUTIME_ID);
     AMX_SET();
     for (int i = 0; i < infer_times; ++i)
@@ -224,81 +206,97 @@ TEST(test_amx, test_matfp_flops) {
     auto end_time = now(CLOCK_THREAD_CPUTIME_ID);
     double ns = end_time - start_time;
     auto gflops = (16 * 16 * 2 * z_nums * infer_times) / ns;
-    printf("z_nums %ld, %.3f GFlops/s\n", z_nums, gflops);
+    printf("z_nums %ld, %.3f Gflop/s\n", z_nums, gflops);
   }
 }
 
-/**
- * @brief Construct a new TEST object
- * reg_num 1, near 1, width 1, 82.836 GB/s
- * reg_num 1, near 1, width 2, 165.531 GB/s
- * reg_num 1, near 1, width 4, 329.309 GB/s
- * reg_num 1, near 0, width 1, 73.962 GB/s
- * reg_num 1, near 0, width 2, 146.306 GB/s
- * reg_num 1, near 0, width 4, 291.527 GB/s
- * reg_num 2, near 1, width 1, 83.081 GB/s
- * reg_num 2, near 1, width 2, 155.895 GB/s
- * reg_num 2, near 1, width 4, 310.828 GB/s
- * reg_num 2, near 0, width 1, 80.683 GB/s
- * reg_num 2, near 0, width 2, 152.055 GB/s
- * reg_num 2, near 0, width 4, 265.102 GB/s
- * 通过near可以发现cache对于amx load有作用的.
- * 假设reg_num = 2, width = 4 load: 2*16*4*4 / 310 = 1.65 ns
- * 此时4个z需要动2次 : 16*16*2*4*2 / 1665.007 = 2.4600 ns
- * 这个显然可以流水起来
- */
 TEST(test_amx, test_load_bandwith) {
-  float M[4096][16 * 4]{};
-  float N[4096][16 * 4]{};
+  constexpr size_t K = (65536 / 4 / (16 * 4)) * 4;
+  float M[K * 2][16 * 4]{};
+  float N[K * 2][16 * 4]{};
 
   ldxy args[2];
   constexpr size_t infer_times = 75497;
-  std::function<void(ldxy *)> perf_func = nullptr;
-
+  std::function<void()> perf_func = nullptr;
   for (size_t reg_num = 1; reg_num <= 2; reg_num++) {
     for (bool near : {true, false}) {
-      if (reg_num == 1) {
-        perf_func = [&M, &N, &near](ldxy *args) {
-          for (size_t i = 0; i < 2048; i++) {
-            for (size_t j = 0; j < 2; j++) {
-              AMX_LDX(args[0].bind(M[near ? i * 2 + j : j * 2048 + i]));
-            }
+      for (auto &&x_width : {1, 2, 4}) {
+        for (auto &&y_width : {0, 1, 2, 4}) {
+          if ((reg_num == 1 && y_width > 0) || (reg_num == 2 && y_width == 0)) {
+            continue;
           }
-        };
-      } else if (reg_num == 2) {
-        perf_func = [&M, &N, &near](ldxy *args) {
-          for (size_t i = 0; i < 2048; i++) {
-            for (size_t j = 0; j < 2; j++) {
-              AMX_LDX(args[0].bind(M[near ? i * 2 + j : j * 2048 + i]));
-              AMX_LDY(args[1].bind(N[near ? i * 2 + j : j * 2048 + i]));
+          perf_func = [&M, &N, &near, &reg_num, &x_width, &y_width]() {
+            auto ldx = ldxy().register_index(0);
+            auto ldy = ldxy().register_index(0);
+            if (x_width >= 2)
+              ldx = ldx.multiple();
+            if (x_width >= 4)
+              ldx = ldx.multiple_four();
+            if (reg_num > 1) {
+              if (y_width >= 2)
+                ldy = ldy.multiple();
+              if (y_width >= 4)
+                ldy = ldy.multiple_four();
             }
-          }
-        };
-      }
-      for (auto &&width : {1, 2, 4}) {
-        auto arg_0 = ldxy().register_index(0);
-        auto arg_1 = ldxy().register_index(0);
-        if (width == 2) {
-          arg_0 = arg_0.multiple();
-          arg_1 = arg_1.multiple();
-        } else if (width == 4) {
-          arg_0 = arg_0.multiple().multiple_four();
-          arg_1 = arg_1.multiple().multiple_four();
-        }
 
-        args[0] = arg_0;
-        args[1] = arg_1;
+            if (near) {
+              for (size_t i = 0; i < K; i++) {
+                AMX_LDX(ldx.bind(M[i]));
+                if (reg_num > 1) {
+                  AMX_LDY(ldy.bind(N[i]));
+                }
+              }
+            } else {
+              for (size_t i = 0; i < K / 2; i++) {
+                for (size_t j = 0; j < 2; j++) {
+                  AMX_LDX(ldx.bind(M[j * K + i]));
+                  if (reg_num > 1) {
+                    AMX_LDY(ldy.bind(N[j * K + i]));
+                  }
+                }
+              }
+            }
+          };
+          printf("reg_num %ld, near %d, x_width %d, y_width %d", reg_num, near,
+                 x_width, y_width);
+          AMX_SET();
+          benchmark<infer_times>(16 * (x_width + y_width) * K * sizeof(float),
+                                 perf_func, "GB/s");
+          AMX_CLR();
+        }
+      }
+    }
+  }
+}
+
+TEST(test_amx, test_store_bandwith) {
+  constexpr size_t K = (65536 / 4 / (16 * 4)) * 2;
+  float CNear[16][16 * 4]{};
+  float C[16][K]{};
+
+  constexpr size_t infer_times = 7549720;
+  std::function<void()> perf_func = nullptr;
+
+  for (size_t z_num : {1, 2, 3, 4}) {
+    for (bool near : {true, false}) {
+      for (size_t width : {1, 2}) {
+        if (width * z_num > 4) {
+          continue;
+        }
+        perf_func = [&C, &CNear, &near, &z_num, &width]() {
+          auto ldst = width == 2 ? ldstz().multiple() : ldstz();
+          for (size_t z = 0; z < z_num; z++) {
+            for (size_t m = 0; m < 16; m++) {
+              AMX_STZ(ldst.row_index(m * 4 + z * width)
+                          .bind(near ? CNear[m] + 16 * z * width
+                                     : C[m] + 16 * z * width));
+            }
+          }
+        };
+        printf("znum : %ld, near: %d, width : %ld ,", z_num, near, width);
         AMX_SET();
-        auto start_time = now(CLOCK_THREAD_CPUTIME_ID);
-        for (int i = 0; i < infer_times; ++i)
-          perf_func(args);
-        auto end_time = now(CLOCK_THREAD_CPUTIME_ID);
+        benchmark<infer_times>(16 * 16 * 4 * z_num * width, perf_func, "GB/s");
         AMX_CLR();
-        double ns = end_time - start_time;
-        auto gbs =
-            (16 * width * reg_num * 4096 * sizeof(float) * infer_times) / ns;
-        printf("reg_num %ld, near %d, width %d, %.3f GB/s\n", reg_num, near,
-               width, gbs);
       }
     }
   }
@@ -392,7 +390,7 @@ TEST(test_amx, test_genlut_generate) {
   }
   ic(index);
   for (size_t i = 0; i < 16; i++) {
-    GTEST_ASSERT_EQ(table[i], index[i]);
+    GTEST_ASSERT_EQ(source[i], index[i]);
   }
 }
 
@@ -488,8 +486,8 @@ void gepdot(size_t curM, size_t curK, size_t curN,
  * @brief k很大可以流水时, 1652.19 gflops. 已经达到峰值算力的90%了
  *
  */
-TEST(test_amx, test_gem2n2k1024) {
-  constexpr size_t M = 16 * 2, K = 1024, N = 16 * 2;
+TEST(test_amx, test_gepdot) {
+  constexpr size_t M = 16 * 2, K = 8192, N = 16 * 2;
   float A[M][K];
   float B[K][N];
   float C[M][N];
@@ -724,9 +722,11 @@ TEST(test_amx, test_gepdot_general) {
     }
   };
 
+  printf("gepdot general");
   AMX_SET();
   benchmark<10000>(2 * M * K * N, func1);
   AMX_CLR();
+  printf("cblas_sgemm");
   benchmark<10000>(2 * M * K * N, [&]() {
     cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
                 (const float *)A, K, (const float *)B, N, 0.0f, (float *)RefC,
