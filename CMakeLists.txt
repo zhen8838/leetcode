@@ -64,6 +64,7 @@ endforeach()
 
 add_subdirectory(meta_program)
 add_subdirectory(meta_pratice)
+add_subdirectory(thread_pratice)
 #比如：add_executable(hello_world    ${SOURCE_FILES})
 
  

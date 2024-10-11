@@ -129,3 +129,4 @@ TEST(test_clang_bug, can_not_detect_constexpr) {
   fixed_tensor<fixed_shape<1, 2, 3, 4>> t;
   foo(t);
 }
+
